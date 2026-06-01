@@ -1,0 +1,28 @@
+﻿bank_accounts:
+  VCB: "1121VCB"
+  ACB: "1121CT"
+  MSB: "1121HB"
+
+matching:
+  min_score: 80
+  min_gap: 8
+
+output:
+  date_format: "%d/%m/%Y"
+  excel_file: "rpa_input.xlsx"
+  tracking_file: "rpa_tracking.json"
+  summary_file: "rpa_summary.xlsx"
+  log_file: "agent_run.log"
+
+rules:
+  default_rules_file: "config/default_rules.yaml"
+
+own_company_file: "config/own_company.yaml"
+object_aliases_file: "config/object_aliases.yaml"
+
+ml:
+  enabled: true
+  transaction_classifier_model: "models/transaction_classifier.joblib"
+  object_ranker_model: "models/object_ranker.joblib"
+  min_classification_confidence: 0.75
+  min_object_confidence: 0.80

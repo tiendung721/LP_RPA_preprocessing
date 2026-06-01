@@ -1,0 +1,6 @@
+﻿ml:
+  enabled: true
+  transaction_classifier_model: "models/transaction_classifier.joblib"
+  object_ranker_model: "models/object_ranker.joblib"
+  min_classification_confidence: 0.75
+  min_object_confidence: 0.80

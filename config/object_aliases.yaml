@@ -1,0 +1,37 @@
+﻿payable:
+  KBB:
+    - "KBB"
+    - "VOI CHO KBB"
+    - "TIEN VOI CHO KBB"
+  PETROLIMEX:
+    - "PETROLIMEX"
+    - "XANG DAU PETROLIMEX"
+  VSICO:
+    - "VSICO"
+    - "CUOC BIEN CHO VSICO"
+  VINHLONG:
+    - "VINH LONG"
+    - "CUOC VAN CHUYEN CHO VINH LONG"
+  SUMO:
+    - "SUMO"
+    - "CHUYEN PHAT SUMO"
+  "26868":
+    - "26868"
+    - "CTY 26868"
+  "MEGA MARKET":
+    - "MEGAMARKET"
+    - "MEGA MARKET"
+  "VINACONTROL HP":
+    - "VINACONTROL HP"
+    - "VINACONTROL"
+  "CANG-HA":
+    - "CANG HAI AN"
+    - "CANG QT VINH TAN"
+    - "CANG QT SONG LAM"
+  "HOANGCONGUAN":
+    - "HOANG CONG UAN"
+    - "HKD HOANG CONG UAN"
+  "TCT":
+    - "TIEN DIEN"
+    - "PH03000018671"
+receivable: {}

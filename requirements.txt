@@ -1,0 +1,10 @@
+﻿pandas
+openpyxl
+xlrd
+rapidfuzz
+Unidecode
+PyYAML
+python-dateutil
+pytest
+scikit-learn
+joblib

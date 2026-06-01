@@ -1,0 +1,236 @@
+rules:
+  - flow: bao_no
+    use_case: "Bảo hiểm"
+    account: "338"
+    bank_scope: ["VCB", "ACB", "MSB"]
+    include_keywords:
+      - "BHXH"
+      - "BHTN"
+      - "BHYT"
+      - "BAO HIEM XA HOI"
+      - "BAO HIEM THAT NGHIEP"
+      - "BAO HIEM Y TE"
+      - "BAO HIEM"
+      - "PHI BAO HIEM"
+      - "DONG BHXH"
+    context_keywords: []
+    exclude_keywords: []
+    auto_process: false
+    priority: 10
+    requires_object: false
+    object_catalog: none
+    error_note: "Luồng bảo hiểm không xử lý tự động"
+
+  - flow: bao_no
+    use_case: "Trả thuế GTGT"
+    account: "3331"
+    bank_scope: ["VCB", "ACB", "MSB"]
+    include_keywords: ["THUE GTGT", "GTGT", "VAT", "GIA TRI GIA TANG"]
+    context_keywords: ["NOP THUE", "NTDT", "KHO BAC", "KBNN", "TKNS", "CQT"]
+    exclude_keywords: []
+    auto_process: true
+    priority: 20
+    requires_object: false
+    object_catalog: none
+
+  - flow: bao_no
+    use_case: "Trả thuế XNK"
+    account: "3333"
+    bank_scope: ["VCB", "ACB", "MSB"]
+    include_keywords:
+      - "THUE XNK"
+      - "THUE XUAT NHAP KHAU"
+      - "XUAT NHAP KHAU"
+      - "THUE HAI QUAN"
+      - "NOP THUE HAI QUAN"
+      - "TCHQ"
+      - "TONG CUC HAI QUAN"
+      - "CUC HAI QUAN"
+      - "CHI CUC HAI QUAN"
+    context_keywords: ["NOP THUE", "HAI QUAN", "TCHQ", "KBNN", "KHO BAC"]
+    exclude_keywords: []
+    auto_process: true
+    priority: 30
+    requires_object: false
+    object_catalog: none
+    context_required: true
+
+  - flow: bao_no
+    use_case: "Trả thuế TNDN"
+    account: "3334"
+    bank_scope: ["VCB", "ACB", "MSB"]
+    include_keywords: ["THUE TNDN", "TNDN", "THUE TNDN TAM NOP"]
+    context_keywords: ["NOP THUE", "NTDT", "KHO BAC", "KBNN", "TKNS", "CQT", "LTHUE"]
+    exclude_keywords: []
+    auto_process: true
+    priority: 40
+    requires_object: false
+    object_catalog: none
+
+  - flow: bao_no
+    use_case: "Trả thuế TNCN"
+    account: "3335"
+    bank_scope: ["VCB", "ACB", "MSB"]
+    include_keywords: ["THUE TNCN", "TNCN"]
+    context_keywords: ["NOP THUE", "NTDT", "KHO BAC", "KBNN", "TKNS", "CQT", "LTHUE"]
+    exclude_keywords: ["TNDN", "THUE TNDN"]
+    auto_process: true
+    priority: 50
+    requires_object: false
+    object_catalog: none
+
+  - flow: bao_no
+    use_case: "Trả lương nhân viên"
+    account: "334"
+    bank_scope: ["ACB"]
+    include_keywords:
+      - "LUONG"
+      - "LUONG THANG"
+      - "TRA LUONG"
+      - "CHI LUONG"
+      - "THANH TOAN LUONG"
+      - "HB CHUYEN KHOAN THEO DANH SACH"
+    context_keywords: []
+    exclude_keywords: []
+    auto_process: true
+    priority: 60
+    requires_object: false
+    object_catalog: none
+
+  - flow: bao_no
+    use_case: "Tạm ứng tiền hàng"
+    account: "141"
+    bank_scope: ["VCB", "ACB", "MSB"]
+    include_keywords:
+      - "TAM UNG"
+      - "TAM UNG TIEN HANG"
+      - "CHUYEN TIEN TAM UNG"
+      - "UNG TIEN"
+      - "TAM UNG CHO"
+    context_keywords: []
+    exclude_keywords: []
+    auto_process: true
+    priority: 70
+    requires_object: true
+    object_catalog: payable
+
+  - flow: bao_no
+    use_case: "Trả phí hải quan"
+    account: "6421"
+    bank_scope: ["VCB"]
+    include_keywords: ["PHI HAI QUAN", "LE PHI HAI QUAN", "PHI HQ", "LE PHI HQ"]
+    context_keywords: []
+    exclude_keywords:
+      - "NOP THUE HAI QUAN"
+      - "THUE XNK"
+      - "THUE XUAT NHAP KHAU"
+    auto_process: true
+    priority: 80
+    requires_object: false
+    object_catalog: none
+
+  - flow: bao_no
+    use_case: "Chi phí tài chính"
+    account: "635"
+    bank_scope: ["VCB"]
+    include_keywords:
+      - "LAI VAY"
+      - "TRA LAI VAY"
+      - "LAI NGAN HANG"
+      - "CHI PHI LAI VAY"
+      - "PHI NGAN HANG"
+      - "PHI CHUYEN TIEN"
+      - "PHI DICH VU NGAN HANG"
+      - "THU PHI"
+      - "PHI BAO LANH"
+    context_keywords: []
+    exclude_keywords: ["CANG PHI", "PHI DAI LY"]
+    auto_process: true
+    priority: 90
+    requires_object: false
+    object_catalog: none
+
+  - flow: bao_no
+    use_case: "Chi phí thanh toán"
+    account: "331"
+    bank_scope: ["VCB", "ACB", "MSB"]
+    include_keywords:
+      - "TT CHO"
+      - "THANH TOAN"
+      - "THANH TOAN TIEN"
+      - "CHUYEN TIEN"
+      - "CK 24/7 CHO"
+      - "TRA TIEN"
+      - "HD"
+      - "HOA DON"
+      - "BILL"
+      - "BL"
+      - "CONG NO"
+      - "BANG KE"
+    context_keywords: []
+    exclude_keywords: []
+    auto_process: true
+    priority: 100
+    requires_object: true
+    object_catalog: payable
+
+  - flow: bao_co
+    use_case: "Doanh thu tài chính"
+    account: "515"
+    bank_scope: ["VCB", "ACB", "MSB"]
+    include_keywords:
+      - "LAI NHAP VON"
+      - "CREDIT INTEREST"
+      - "TRA LAI TAI KHOAN"
+      - "LAI TIEN GUI"
+      - "LAI TAI KHOAN"
+    context_keywords: []
+    exclude_keywords: ["HOAN LAI TIEN", "CHUYEN TRA LAI TIEN"]
+    auto_process: true
+    priority: 10
+    requires_object: false
+    object_catalog: none
+
+  - flow: bao_co
+    use_case: "Nhận tiền tạm ứng"
+    account: "141"
+    bank_scope: ["VCB", "ACB", "MSB"]
+    include_keywords:
+      - "TAM UNG"
+      - "NHAN TAM UNG"
+      - "CHUYEN TAM UNG"
+      - "HOAN UNG"
+      - "HOAN LAI TAM UNG"
+      - "THU HOI TAM UNG"
+    context_keywords: []
+    exclude_keywords: []
+    auto_process: true
+    priority: 20
+    requires_object: true
+    object_catalog: receivable
+
+  - flow: bao_co
+    use_case: "Công nợ của khách"
+    account: "131"
+    bank_scope: ["VCB", "ACB", "MSB"]
+    include_keywords:
+      - "THANH TOAN"
+      - "TT"
+      - "CHUYEN KHOAN"
+      - "TRA TIEN"
+      - "THANH TOAN CONG NO"
+      - "CONG NO"
+      - "HD"
+      - "HOA DON"
+      - "BANG KE"
+      - "QUYET TOAN"
+      - "CANG PHI"
+      - "PHI DAI LY"
+      - "CUOC"
+      - "DICH VU"
+    context_keywords: []
+    exclude_keywords: []
+    auto_process: true
+    priority: 30
+    requires_object: true
+    object_catalog: receivable
