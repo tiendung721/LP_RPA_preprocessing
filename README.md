@@ -32,10 +32,14 @@ File chạy tạm cho RPA: `output/rpa_input.xlsx`
 - `SUMMARY`: thống kê số dòng và tổng tiền.
 - `RPA_TASKS`: mapping giữa dòng input và dòng trạng thái bền vững.
 
-Hai sheet input đều có đúng 6 cột:
+Các sheet input có các cột nghiệp vụ sau. Cột `Tỷ giá` để trống với giao dịch thường và có giá trị với giao dịch ngoại tệ:
 
 ```text
-Ngày CT | Mã ĐT | Lí do | TK nợ | TK có | Thành tiền
+BAO_NO/BAO_CO/CHI_TIEN_MAT:
+Ngày CT | Mã ĐT | Lí do | Người nhận tiền | TK nợ | TK có | Thành tiền | Tỷ giá | Ngân hàng
+
+THU_TIEN_MAT:
+Ngày CT | Mã ĐT | Lí do | Người nộp tiền | TK nợ | TK có | Thành tiền | Tỷ giá | Ngân hàng
 ```
 
 File tracking: `output/rpa_tracking.json`
@@ -43,17 +47,24 @@ File tracking: `output/rpa_tracking.json`
 Tracking có thêm:
 
 - `entities`: đối tượng gợi ý, nội dung đã làm sạch, hóa đơn, MST, intent.
-- `object_match_source`: `alias_match`, `entity_match`, `fuzzy_name`, `tax_code`.
+- `object_match_source`: `alias_match`, `catalog_phrase`, `entity_match`, `fuzzy_name`, `tax_code`.
 - `ml_result`: kết quả ML nếu có model.
 - `verification_result`: kiểm tra cuối trước khi xuất RPA.
+
+File review mã đối tượng: `output/object_match_review.xlsx`
+
+- `OBJECT_ERRORS`: các dòng còn lỗi `Mã ĐT`, top candidates và nhóm nguyên nhân.
+- `SUMMARY`: thống kê theo nhóm lỗi, ngân hàng, use case và hint.
 
 File trạng thái bền vững: `output/rpa_summary.xlsx`
 
 - Sheet `RPA_SUMMARY` lưu từng giao dịch theo `transaction_uid`, file/sheet/dòng gốc và trạng thái RPA.
 - Trạng thái `hoàn thành` sẽ không được đưa lại vào `rpa_input.xlsx` ở các lần chạy sau.
-- Trạng thái `chưa nhập` và `lỗi` được phép đưa vào `rpa_input.xlsx` để RPA chạy.
-- Trạng thái `đang nhập` từ run cũ sẽ chuyển thành `cần kiểm tra` để tránh nhập trùng nếu RPA bị dừng giữa chừng.
-- Nếu RPA chạy bằng Python, dùng `mark_rpa_started`, `mark_rpa_done`, `mark_rpa_error` trong `src.rpa_summary` để cập nhật summary ngay sau từng dòng.
+- Chỉ có 2 trạng thái bền vững: `chưa nhập` và `hoàn thành`.
+- Các trạng thái cũ như `lỗi`, `đang nhập`, `cần kiểm tra`, `bỏ qua` sẽ được chuẩn hóa về `chưa nhập`.
+- Khi PAD gọi cập nhật `hoàn thành` cho một dòng, dòng đó được ghi trạng thái `hoàn thành` ngay và sẽ không được đưa lại vào `rpa_input.xlsx` ở lần chạy sau.
+- `finalize-run` vẫn có thể gọi ở cuối flow để tương thích và xử lý dữ liệu cũ, nhưng không còn là điều kiện bắt buộc để khóa dòng đã nhập.
+- Nếu PAD abort giữa chừng, abort run chỉ reset các dòng lỗi/tạm trong run đó; các dòng đã `hoàn thành` không bị đụng.
 
 ## 3. Config Quan Trọng
 
@@ -105,9 +116,9 @@ python -m pytest --basetemp .pytest_tmp
 - Sao kê ACB/MSB/VCB: `input/statements/`
 - Danh mục phải thu: `input/DS mã đối tượng phải thu.xlsx`
 - Danh mục phải trả: `input/DS mã đối tượng phải trả.xlsx`
-- File quy luật: `input/quy_luat_da_bo_TNDN_o_TNCN.xlsx`
+- File quy luật đang dùng: `config/default_rules.yaml`
 
-Nếu file quy luật Excel chưa đủ chuẩn, chương trình tự dùng `config/default_rules.yaml`.
+Chương trình hiện dùng rule YAML trực tiếp, không đọc file quy luật Excel khi chạy.
 
 ## 7. Nguyên Tắc An Toàn
 

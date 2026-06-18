@@ -69,14 +69,15 @@ class EntityExtractor:
         intent = _detect_intent(cleaned_description)
         invoice_no = _extract_first(r"(?:HD|HOA DON|SO HD)\s*(?:SO)?\s*([A-Z0-9,\- ]{1,40})", cleaned_description)
         bill_no = _extract_first(r"(?:BILL|BL)\s*([A-Z0-9,\- ]{1,40})", cleaned_description)
-        tax_code = _extract_first(r"(?:MST|MA SO THUE)\s*(\d{8,14})", normalized_description)
+        tax_code = _extract_first(r"(?:MST|MA SO THUE|TAX CODE)\s*(\d{8,14})", normalized_description)
         bank_account_hint = _extract_first(r"(?:CK 24 7 CHO|CHO)\s*(\d{6,20})", cleaned_description)
         service_hint = _extract_service(cleaned_description)
+        cash_person_name, cash_person_source = _extract_cash_person_name(normalized_description, normalized_counterparty)
 
         counterparty_hint = ""
         counterparty_source = ""
         if bank == "MSB" and normalized_counterparty and not self.own_company.is_own_name(normalized_counterparty):
-            counterparty_hint = normalized_counterparty
+            counterparty_hint = _clean_counterparty_raw(normalized_counterparty)
             counterparty_source = "counterparty_raw"
         if not counterparty_hint:
             counterparty_hint, counterparty_source = _extract_counterparty_hint(cleaned_description)
@@ -84,6 +85,8 @@ class EntityExtractor:
         return ExtractedEntities(
             counterparty_hint=counterparty_hint,
             counterparty_source=counterparty_source,
+            cash_person_name=cash_person_name,
+            cash_person_source=cash_person_source,
             cleaned_description=cleaned_description,
             intent=intent,
             invoice_no=invoice_no,
@@ -100,16 +103,27 @@ def _extract_counterparty_hint(text: str) -> tuple[str, str]:
         ("ck_247_cho", r"CK 24 7 CHO\s+(?:\d{6,20}\s+)?(.+)"),
         ("tt_cho", r"TT\s+CHO\s+(.+)"),
         ("ct_cho", r"CT\s+CHO\s+(.+)"),
+        ("tt_service_cho", r"TT\s+(.+?)\s+CHO\s+(.+)"),
+        ("tt_cang", r"TT\s+CANG\s+(.+?)(?=\s+(?:TAU|ST|TG|GD)\b|$)"),
         ("thanh_toan_cho", r"THANH TOAN(?:\s+[A-Z0-9]+){0,8}\s+CHO\s+(.+)"),
         ("chuyen_tien_cho", r"CHUYEN TIEN(?:\s+[A-Z0-9]+){0,6}\s+CHO\s+(.+)"),
         ("thu_tien_tu", r"THU TIEN TU\s+(.+)"),
+        ("co_so_before_chuyen_tien", r"^(CO SO\s+.{3,80}?)(?=\s+CHUYEN TIEN\b)"),
+        ("cp_vietnam_corporation", r"\b(CP VIETNAM CORPORATION)\b"),
+        ("english_company_prefix", r"^(.{3,100}?\b(?:COMPANY LIMITED|CO LTD|CORPORATION|COMPANY|LTD))(?=\s|$)"),
         ("cho", r"\bCHO\s+(.+)"),
+        (
+            "company_prefix",
+            r"\b(?:(?:CONG TY|CTY|C TY)(?:\s+(?:TNHH|CP|CO PHAN))?|CT\s+(?:TNHH|CP))\s+(.{3,100}?)(?=\s+(?:TT|THANH TOAN|NOP|CHUYEN|CK|PAYMENT|PAY|TAX CODE|MST|MA SO THUE|GD|TAI)\b|\s+\d{8,14}\b|$)",
+        ),
+        ("name_before_tax_code", r"^(.{3,80}?)\s+(?:TAX CODE|MST|MA SO THUE)\b"),
     ]
     for source, pattern in patterns:
         match = re.search(pattern, text)
         if not match:
             continue
-        hint = _clean_counterparty_segment(match.group(1))
+        hint_value = match.group(2) if source == "tt_service_cho" and match.lastindex and match.lastindex >= 2 else match.group(1)
+        hint = _clean_counterparty_segment(hint_value)
         if hint:
             return hint, source
     return "", ""
@@ -117,14 +131,85 @@ def _extract_counterparty_hint(text: str) -> tuple[str, str]:
 
 def _clean_counterparty_segment(segment: str) -> str:
     segment = re.sub(r"^\d{6,20}\s+", "", segment).strip()
+    if re.search(r"\bCP VIETNAM CORPORATION\b", segment):
+        return "CP VIETNAM CORPORATION"
+    if re.search(r"\bTCL SMART DEVICE VIET NAM COMPANY LIMITED\b", segment):
+        return "TCL SMART DEVICE VIET NAM"
     if " CHO " in segment:
         segment = segment.rsplit(" CHO ", 1)[-1].strip()
-    stop_pattern = r"\b(THEO|HD|HOA DON|SO HD|BANG KE|BILL|BL|THANG|KY HOA DON|TAU|LAN|MST|MA SO THUE)\b"
+    segment = _cut_counterparty_noise(segment)
+    stop_pattern = r"\b(?:THEO|HD|HOA DON|SO HD|BANG KE|BILL|BL|KY HOA DON|TAU|LAN|MST|MA SO THUE)\b|\bTHANG\s+\d"
     segment = re.split(stop_pattern, segment, maxsplit=1)[0]
-    segment = re.sub(r"\b(CTY|CT|CONG TY|TNHH|CO PHAN|CP)\b", " ", segment)
+    segment = re.sub(r"\b(CTY|CT|CONG TY|TNHH|CO PHAN|CP|COMPANY|LIMITED|LTD|JSC|CORPORATION)\b", " ", segment)
     segment = re.sub(r"[^A-Z0-9]+", " ", segment)
-    tokens = [token for token in segment.split() if token not in {"TIEN", "CUOC", "PHI", "DICH", "VU"}]
+    tokens = [token for token in segment.split() if token not in {"CUOC", "PHI", "DICH"}]
     return " ".join(tokens[:6]).strip()
+
+
+def _clean_counterparty_raw(segment: str) -> str:
+    segment = re.sub(r"^\d{6,20}\s+", "", segment).strip()
+    segment = _cut_counterparty_noise(segment)
+    segment = re.sub(
+        r"\b(THUONG MAI VA VAN TAI|VAN TAI TM VA DV|TM VA VAN TAI|TM VA DV|TM DV|DICH VU|VAN TAI)\b",
+        " ",
+        segment,
+    )
+    segment = re.sub(r"\b(CN|CTY|CT|CONG TY|TNHH|CO PHAN|CP|MTV|COMPANY|LIMITED|LTD|JSC)\b", " ", segment)
+    segment = re.sub(r"[^A-Z0-9]+", " ", segment)
+    tokens = [token for token in segment.split() if token not in {"VA"}]
+    return " ".join(tokens[:10]).strip()
+
+
+def _extract_cash_person_name(description: str, counterparty_raw: str = "") -> tuple[str, str]:
+    raw_person = _clean_person_name(counterparty_raw)
+    if raw_person:
+        return raw_person, "counterparty_raw"
+
+    patterns = [
+        ("acb_cash_marker", r"^([A-Z ]{5,60}?)\s+\d{6,20}\s+(?:CHI SEC|NT)\b"),
+        ("person_before_cash_marker", r"^([A-Z ]{5,60}?)(?=\s+(?:CHI SEC|RUT TIEN MAT|RUT TM|NOP TIEN MAT|NOP TM|NT)\b)"),
+        ("cash_person_label", r"\b(?:NGUOI NHAN|NGUOI NOP|NGUOI RUT|TEN NGUOI NHAN|TEN NGUOI NOP)\s*:?\s*([A-Z ]{5,60})"),
+    ]
+    for source, pattern in patterns:
+        match = re.search(pattern, description)
+        if not match:
+            continue
+        person = _clean_person_name(match.group(1))
+        if person:
+            return person, source
+    return "", ""
+
+
+def _clean_person_name(value: str) -> str:
+    value = normalize_text(value)
+    if not value:
+        return ""
+    value = _cut_counterparty_noise(value)
+    value = re.split(r"[\#;\-\.,/\[\]\(\)]", value, maxsplit=1)[0]
+    value = re.sub(r"[^A-Z ]+", " ", value)
+    value = re.sub(r"\s+", " ", value).strip()
+    tokens = value.split()
+    if not _looks_like_person_name(tokens):
+        return ""
+    return " ".join(tokens[:6])
+
+
+def _looks_like_person_name(tokens: list[str]) -> bool:
+    if not 2 <= len(tokens) <= 6:
+        return False
+    if any(token in _NON_PERSON_NAME_TOKENS for token in tokens):
+        return False
+    return tokens[0] in _VIETNAMESE_FAMILY_NAMES
+
+
+def _cut_counterparty_noise(segment: str) -> str:
+    noise_pattern = (
+        r"\b(?:GD|NHTMCP|TAX CODE|MST|MA SO THUE)\b"
+        r"|\["
+        r"|\b\d{6}\b(?:\s+\d{2}\b){0,3}"
+        r"|\b(?=[A-Z0-9]*\d)[A-Z0-9]{10,}\b"
+    )
+    return re.split(noise_pattern, segment, maxsplit=1)[0].strip()
 
 
 def _detect_intent(text: str) -> str:
@@ -164,4 +249,70 @@ def _remove_phrase(text: str, phrase: str) -> str:
     text = re.sub(pattern, " ", text)
     text = text.replace(phrase, " ")
     return re.sub(r"\s+", " ", text).strip()
+
+
+_VIETNAMESE_FAMILY_NAMES = {
+    "BUI",
+    "CAO",
+    "CHAU",
+    "CHU",
+    "DAO",
+    "DANG",
+    "DINH",
+    "DO",
+    "DUONG",
+    "HA",
+    "HO",
+    "HOANG",
+    "HUYNH",
+    "KIEU",
+    "LA",
+    "LAM",
+    "LE",
+    "LUONG",
+    "LY",
+    "MAC",
+    "MAI",
+    "NGO",
+    "NGUYEN",
+    "PHAM",
+    "PHAN",
+    "QUACH",
+    "TA",
+    "THAI",
+    "TO",
+    "TON",
+    "TRAN",
+    "TRINH",
+    "TRUONG",
+    "VU",
+    "VO",
+}
+
+_NON_PERSON_NAME_TOKENS = {
+    "CASH",
+    "CHI",
+    "CONG",
+    "CO",
+    "CP",
+    "CT",
+    "CTY",
+    "GIAO",
+    "HANG",
+    "KHACH",
+    "MAT",
+    "NGAN",
+    "NHAP",
+    "NOP",
+    "PHI",
+    "QUY",
+    "RUT",
+    "SEC",
+    "TAI",
+    "TIEN",
+    "TK",
+    "TM",
+    "TNHH",
+    "TY",
+}
 

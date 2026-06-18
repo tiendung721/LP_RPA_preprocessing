@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -9,27 +9,38 @@ import pandas as pd
 from openpyxl.styles import Font
 from openpyxl.utils import get_column_letter
 
+from .flows import FLOW_BAO_CO, FLOW_BAO_NO, FLOW_CHI_TIEN_MAT, FLOW_THU_TIEN_MAT
 from .models import ProcessedTransaction
+from .rpa_tracking import (
+    ELIGIBLE_RPA_STATUSES,
+    ATTEMPT_SUCCESS,
+    STATUS_DONE,
+    STATUS_PENDING,
+    abort_run_records,
+    apply_status_update,
+    finalize_run_records,
+    load_tracking,
+    normalize_status,
+    normalize_tracking_record,
+    validate_status,
+)
 from .transaction_identity import assign_transaction_uids
 
 
 SUMMARY_SHEET_NAME = "RPA_SUMMARY"
-STATUS_PENDING = "chưa nhập"
-STATUS_IN_PROGRESS = "đang nhập"
-STATUS_DONE = "hoàn thành"
-STATUS_ERROR = "lỗi"
-STATUS_SKIPPED = "bỏ qua"
-STATUS_REVIEW = "cần kiểm tra"
-
-ELIGIBLE_RPA_STATUSES = {STATUS_PENDING, STATUS_ERROR}
 
 SUMMARY_COLUMNS = [
     "transaction_uid",
+    "bank_code",
     "source_file",
     "source_sheet",
-    "source_row_index",
-    "bank",
-    "flow",
+    "source_row",
+    "direction",
+    "rpa_status",
+    "rpa_message",
+    "created_at",
+    "updated_at",
+    "completed_at",
     "transaction_date",
     "doc_no",
     "original_content",
@@ -40,14 +51,16 @@ SUMMARY_COLUMNS = [
     "debit_account",
     "credit_account",
     "reason",
-    "status",
     "last_run_id",
     "rpa_started_at",
     "rpa_finished_at",
-    "rpa_message",
     "voucher_no",
-    "created_at",
-    "updated_at",
+    "last_attempt_result",
+    # Backward-compatible aliases used by older output and tests.
+    "status",
+    "bank",
+    "flow",
+    "source_row_index",
 ]
 
 
@@ -56,6 +69,7 @@ class RpaRunState:
     run_id: str
     summary_df: pd.DataFrame
     rpa_items: list[ProcessedTransaction]
+    stats: dict[str, int] = field(default_factory=dict)
 
 
 def make_run_id() -> str:
@@ -65,7 +79,9 @@ def make_run_id() -> str:
 def prepare_rpa_run(
     processed: list[ProcessedTransaction],
     summary_path: str | Path,
+    tracking_path: str | Path | None = None,
     run_id: str | None = None,
+    logger: Any | None = None,
 ) -> RpaRunState:
     run_id = run_id or make_run_id()
     if any(not item.transaction_uid for item in processed):
@@ -78,23 +94,66 @@ def prepare_rpa_run(
         if str(row.get("transaction_uid", "")).strip()
     }
 
+    if tracking_path:
+        tracking_by_uid = load_tracking(tracking_path, logger=logger)
+        for uid, tracking_record in tracking_by_uid.items():
+            previous = existing_by_uid.get(uid, {})
+            existing_by_uid[uid] = _merge_existing_records(previous, tracking_record)
+
     now = _now()
     records_by_uid: dict[str, dict[str, Any]] = {}
     rpa_items: list[ProcessedTransaction] = []
     seen: set[str] = set()
+    stats = {
+        "total_processed": len(processed),
+        "new_count": 0,
+        "auto_process_count": 0,
+        "pending_count": 0,
+        "in_progress_count": 0,
+        "error_count": 0,
+        "skipped_count": 0,
+        "skipped_completed_count": 0,
+        "waiting_count": 0,
+        "retry_error_count": 0,
+        "review_count": 0,
+        "exception_count": sum(1 for item in processed if item.status != "OK"),
+        "bao_no_output_count": 0,
+        "bao_co_output_count": 0,
+        "thu_tien_mat_output_count": 0,
+        "chi_tien_mat_output_count": 0,
+    }
 
     for item in processed:
         uid = item.transaction_uid
         if not uid:
             continue
         previous = existing_by_uid.get(uid)
+        if previous is None:
+            stats["new_count"] += 1
+
         record = _merge_record(previous, item, run_id, now)
         records_by_uid[uid] = record
         seen.add(uid)
 
-        item.rpa_status = str(record.get("status", "")).strip()
+        item.rpa_status = str(record.get("rpa_status", "")).strip()
+        item.rpa_message = str(record.get("rpa_message", "") or "")
+
+        if item.rpa_status == STATUS_PENDING:
+            stats["pending_count"] += 1
+        if item.rpa_status == STATUS_DONE:
+            stats["skipped_completed_count"] += 1
         if item.status == "OK" and item.rpa_status in ELIGIBLE_RPA_STATUSES:
             rpa_items.append(item)
+            stats["auto_process_count"] += 1
+            stats["waiting_count"] += 1
+            if item.flow == FLOW_BAO_NO:
+                stats["bao_no_output_count"] += 1
+            elif item.flow == FLOW_BAO_CO:
+                stats["bao_co_output_count"] += 1
+            elif item.flow == FLOW_THU_TIEN_MAT:
+                stats["thu_tien_mat_output_count"] += 1
+            elif item.flow == FLOW_CHI_TIEN_MAT:
+                stats["chi_tien_mat_output_count"] += 1
 
     for row in existing_df.to_dict("records"):
         uid = str(row.get("transaction_uid", "")).strip()
@@ -102,7 +161,8 @@ def prepare_rpa_run(
             records_by_uid[uid] = _ensure_summary_record(_clean_record(row))
 
     summary_df = pd.DataFrame(list(records_by_uid.values()), columns=SUMMARY_COLUMNS)
-    return RpaRunState(run_id=run_id, summary_df=summary_df, rpa_items=rpa_items)
+    summary_df = _ensure_columns(summary_df)
+    return RpaRunState(run_id=run_id, summary_df=summary_df, rpa_items=rpa_items, stats=stats)
 
 
 def load_summary(path: str | Path) -> pd.DataFrame:
@@ -136,36 +196,25 @@ def update_rpa_status(
     run_id: str = "",
     message: str = "",
     voucher_no: str = "",
-) -> None:
-    if status not in {STATUS_PENDING, STATUS_IN_PROGRESS, STATUS_DONE, STATUS_ERROR, STATUS_SKIPPED, STATUS_REVIEW}:
-        raise ValueError(f"Unsupported RPA status: {status}")
-
+) -> dict[str, Any]:
+    status = validate_status(status)
     df = load_summary(summary_path)
-    matches = df.index[df["transaction_uid"].astype(str) == str(transaction_uid)].tolist()
+    uid = str(transaction_uid).strip()
+    matches = df.index[df["transaction_uid"].astype(str) == uid].tolist()
     if not matches:
-        raise KeyError(f"transaction_uid not found in RPA summary: {transaction_uid}")
+        raise KeyError(f"transaction_uid not found in RPA summary: {uid}")
 
     row_idx = matches[0]
-    now = _now()
-    df.at[row_idx, "status"] = status
-    df.at[row_idx, "updated_at"] = now
-    if run_id:
-        df.at[row_idx, "last_run_id"] = run_id
-    if message or status in {STATUS_DONE, STATUS_ERROR, STATUS_REVIEW}:
-        df.at[row_idx, "rpa_message"] = message
-    if voucher_no:
-        df.at[row_idx, "voucher_no"] = voucher_no
-    if status == STATUS_IN_PROGRESS:
-        df.at[row_idx, "rpa_started_at"] = now
-        df.at[row_idx, "rpa_finished_at"] = ""
-    elif status in {STATUS_DONE, STATUS_ERROR, STATUS_REVIEW, STATUS_SKIPPED}:
-        df.at[row_idx, "rpa_finished_at"] = now
-
+    record = _clean_record(df.loc[row_idx].to_dict())
+    updated = apply_status_update(record, status, message=message, voucher_no=voucher_no, run_id=run_id)
+    for column in SUMMARY_COLUMNS:
+        df.at[row_idx, column] = updated.get(column, "")
     write_summary(df, summary_path)
+    return _ensure_summary_record(updated)
 
 
 def mark_rpa_started(summary_path: str | Path, transaction_uid: str, run_id: str) -> None:
-    update_rpa_status(summary_path, transaction_uid, STATUS_IN_PROGRESS, run_id=run_id)
+    update_rpa_status(summary_path, transaction_uid, STATUS_PENDING, run_id=run_id)
 
 
 def mark_rpa_done(
@@ -179,7 +228,50 @@ def mark_rpa_done(
 
 
 def mark_rpa_error(summary_path: str | Path, transaction_uid: str, run_id: str, message: str) -> None:
-    update_rpa_status(summary_path, transaction_uid, STATUS_ERROR, run_id=run_id, message=message)
+    update_rpa_status(summary_path, transaction_uid, STATUS_PENDING, run_id=run_id, message=message)
+
+
+def finalize_rpa_run(summary_path: str | Path, run_id: str) -> pd.DataFrame:
+    df = load_summary(summary_path)
+    records = [_ensure_summary_record(record) for record in df.to_dict("records")]
+    finalized = [_ensure_summary_record(record) for record in finalize_run_records(records, run_id)]
+    result = pd.DataFrame(finalized, columns=SUMMARY_COLUMNS)
+    write_summary(result, summary_path)
+    return result
+
+
+def abort_rpa_run(summary_path: str | Path, run_id: str, message: str = "") -> pd.DataFrame:
+    df = load_summary(summary_path)
+    records = [_ensure_summary_record(record) for record in df.to_dict("records")]
+    aborted = [_ensure_summary_record(record) for record in abort_run_records(records, run_id, message=message)]
+    result = pd.DataFrame(aborted, columns=SUMMARY_COLUMNS)
+    write_summary(result, summary_path)
+    return result
+
+
+def _merge_existing_records(previous: dict[str, Any], tracking_record: dict[str, Any]) -> dict[str, Any]:
+    previous = _ensure_summary_record(previous) if previous else {}
+    tracking_status = normalize_status(tracking_record.get("rpa_status") or tracking_record.get("status"), default="")
+    tracking_record = normalize_tracking_record(tracking_record) if tracking_status else dict(tracking_record)
+    merged = dict(previous)
+    rpa_fields = {
+        "rpa_status",
+        "status",
+        "rpa_message",
+        "updated_at",
+        "completed_at",
+        "rpa_started_at",
+        "rpa_finished_at",
+        "voucher_no",
+        "last_attempt_result",
+    }
+    for field, value in tracking_record.items():
+        if _is_blank_value(value):
+            continue
+        if field in rpa_fields and not tracking_status:
+            continue
+        merged[field] = value
+    return _ensure_summary_record(merged)
 
 
 def _merge_record(
@@ -190,43 +282,47 @@ def _merge_record(
 ) -> dict[str, Any]:
     current = _record_from_item(item, run_id, now)
     if not previous:
-        current["status"] = STATUS_PENDING if item.status == "OK" else STATUS_REVIEW
+        current["rpa_status"] = STATUS_PENDING
+        current["status"] = current["rpa_status"]
         current["rpa_message"] = "" if item.status == "OK" else item.error_note
         return current
 
     previous = _ensure_summary_record(previous)
-    previous_status = str(previous.get("status", "")).strip()
+    previous_status = normalize_status(previous.get("rpa_status") or previous.get("status"), default=STATUS_PENDING)
 
-    if previous_status in {STATUS_DONE, STATUS_SKIPPED}:
+    if previous_status == STATUS_DONE:
         return previous
 
     record = {**current, "created_at": previous.get("created_at") or now}
     _preserve_rpa_fields(record, previous)
 
-    if previous_status == STATUS_IN_PROGRESS:
-        record["status"] = STATUS_REVIEW
-        record["rpa_message"] = previous.get("rpa_message") or "Dòng đang nhập từ run trước; cần kiểm tra trước khi chạy lại"
+    if item.status != "OK":
+        record["rpa_status"] = STATUS_PENDING
+        record["status"] = STATUS_PENDING
+        record["rpa_message"] = item.error_note
         return record
 
-    if item.status == "OK":
-        record["status"] = previous_status if previous_status in ELIGIBLE_RPA_STATUSES else STATUS_PENDING
-        if record["status"] == STATUS_PENDING and previous_status != STATUS_ERROR:
-            record["rpa_message"] = ""
-        return record
-
-    record["status"] = STATUS_REVIEW
-    record["rpa_message"] = item.error_note
+    record["rpa_status"] = previous_status if previous_status == STATUS_DONE else STATUS_PENDING
+    record["status"] = record["rpa_status"]
+    if record["rpa_status"] == STATUS_PENDING:
+        record["rpa_message"] = ""
     return record
 
 
 def _record_from_item(item: ProcessedTransaction, run_id: str, now: str) -> dict[str, Any]:
+    source_row = item.original_row_index
     return {
         "transaction_uid": item.transaction_uid,
+        "bank_code": item.bank,
         "source_file": item.source_file,
         "source_sheet": item.source_sheet,
-        "source_row_index": item.original_row_index,
-        "bank": item.bank,
-        "flow": item.flow,
+        "source_row": source_row,
+        "direction": item.flow,
+        "rpa_status": "",
+        "rpa_message": "",
+        "created_at": now,
+        "updated_at": now,
+        "completed_at": "",
         "transaction_date": item.transaction_date,
         "doc_no": item.doc_no,
         "original_content": item.original_content,
@@ -237,19 +333,20 @@ def _record_from_item(item: ProcessedTransaction, run_id: str, now: str) -> dict
         "debit_account": item.debit_account,
         "credit_account": item.credit_account,
         "reason": item.reason,
-        "status": "",
         "last_run_id": run_id,
         "rpa_started_at": "",
         "rpa_finished_at": "",
-        "rpa_message": "",
         "voucher_no": "",
-        "created_at": now,
-        "updated_at": now,
+        "last_attempt_result": "",
+        "status": "",
+        "bank": item.bank,
+        "flow": item.flow,
+        "source_row_index": source_row,
     }
 
 
 def _preserve_rpa_fields(record: dict[str, Any], previous: dict[str, Any]) -> None:
-    for field in ("rpa_started_at", "rpa_finished_at", "rpa_message", "voucher_no"):
+    for field in ("rpa_started_at", "rpa_finished_at", "rpa_message", "voucher_no", "completed_at", "last_attempt_result"):
         record[field] = previous.get(field, "")
 
 
@@ -258,11 +355,32 @@ def _ensure_columns(df: pd.DataFrame) -> pd.DataFrame:
     for column in SUMMARY_COLUMNS:
         if column not in result.columns:
             result[column] = ""
-    return result[SUMMARY_COLUMNS]
+
+    result = result[SUMMARY_COLUMNS].astype(object)
+    for idx, row in result.iterrows():
+        record = _ensure_summary_record(_clean_record(row.to_dict()))
+        for column in SUMMARY_COLUMNS:
+            result.at[idx, column] = record.get(column, "")
+    return result
 
 
 def _ensure_summary_record(row: dict[str, Any]) -> dict[str, Any]:
-    return {column: _clean_cell(row.get(column, "")) for column in SUMMARY_COLUMNS}
+    record = {column: _clean_cell(row.get(column, "")) for column in SUMMARY_COLUMNS}
+    record["bank_code"] = record.get("bank_code") or row.get("bank") or ""
+    record["bank"] = record.get("bank") or record["bank_code"]
+    record["direction"] = record.get("direction") or row.get("flow") or ""
+    record["flow"] = record.get("flow") or record["direction"]
+    record["source_row"] = record.get("source_row") or row.get("source_row_index") or row.get("original_row_index") or ""
+    record["source_row_index"] = record.get("source_row_index") or record["source_row"]
+    rpa_status = normalize_status(record.get("rpa_status") or row.get("status"), default=STATUS_PENDING)
+    if rpa_status != STATUS_DONE and str(record.get("last_attempt_result") or "") == ATTEMPT_SUCCESS:
+        rpa_status = STATUS_DONE
+        record["last_attempt_result"] = ""
+    record["rpa_status"] = rpa_status
+    record["status"] = rpa_status
+    if rpa_status == STATUS_DONE and not record.get("completed_at"):
+        record["completed_at"] = record.get("rpa_finished_at") or record.get("updated_at") or _now()
+    return record
 
 
 def _clean_record(row: dict[str, Any]) -> dict[str, Any]:
@@ -270,16 +388,23 @@ def _clean_record(row: dict[str, Any]) -> dict[str, Any]:
 
 
 def _clean_cell(value: Any) -> Any:
-    if pd.isna(value):
-        return ""
+    try:
+        if pd.isna(value):
+            return ""
+    except (TypeError, ValueError):
+        pass
     return value
+
+
+def _is_blank_value(value: Any) -> bool:
+    return value is None or (isinstance(value, str) and value == "")
 
 
 def _status_counts(df: pd.DataFrame) -> pd.DataFrame:
     if df.empty:
-        return pd.DataFrame(columns=["status", "count"])
-    counts = df["status"].fillna("").astype(str).value_counts().reset_index()
-    counts.columns = ["status", "count"]
+        return pd.DataFrame(columns=["rpa_status", "count"])
+    counts = df["rpa_status"].fillna("").astype(str).value_counts().reset_index()
+    counts.columns = ["rpa_status", "count"]
     return counts
 
 
@@ -292,7 +417,7 @@ def _format_sheet(ws) -> None:
         cell.font = Font(bold=True)
     header_names = {cell.value: idx for idx, cell in enumerate(ws[1], start=1)}
     for name, idx in header_names.items():
-        if name and ("date" in str(name).lower() or str(name) in {"created_at", "updated_at"}):
+        if name and ("date" in str(name).lower() or str(name) in {"created_at", "updated_at", "completed_at"}):
             for row in range(2, ws.max_row + 1):
                 ws.cell(row=row, column=idx).number_format = "DD/MM/YYYY"
         if name in {"amount", "count"}:

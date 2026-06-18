@@ -1,4 +1,61 @@
 rules:
+  - flow: thu_tien_mat
+    rule_id: "cash_withdrawal_to_fund"
+    direction: "money_out"
+    use_case: "Rut tien mat nhap quy"
+    account: "1111"
+    bank_scope: ["VCB", "ACB", "MSB"]
+    include_keywords:
+      - "RUT TIEN MAT NHAP QUY"
+      - "RUT TIEN NHAP QUY"
+      - "RUT TIEN MAT"
+      - "RUT TM"
+      - "CHI SEC"
+      - "CHI SEC RUT TIEN"
+      - "CASH WITHDRAWAL"
+      - "ATM CASH WITHDRAWAL"
+    context_keywords: []
+    exclude_keywords:
+      - "PHI RUT TIEN"
+      - "PHI ATM"
+      - "PHI CHI SEC"
+      - "PHI SEC"
+      - "PHI"
+    auto_process: true
+    priority: 1
+    requires_object: false
+    object_catalog: none
+
+  - flow: chi_tien_mat
+    rule_id: "cash_deposit_from_fund"
+    direction: "money_in"
+    use_case: "Nop tien mat vao tai khoan"
+    account: "1111"
+    bank_scope: ["VCB", "ACB", "MSB"]
+    include_keywords:
+      - "NOP TIEN MAT VAO TAI KHOAN"
+      - "NOP TIEN VAO TAI KHOAN"
+      - "NOP TIEN VAO TK"
+      - "NOP TIEN MAT"
+      - "NOP TM"
+      - "CASH DEPOSIT"
+      - "NT TK"
+      - "CASH PAID IN"
+    context_keywords: []
+    exclude_keywords:
+      - "KHACH HANG"
+      - "THANH TOAN HOA DON"
+      - "THANH TOAN CONG NO"
+      - "CONG NO"
+      - "HOA DON"
+      - "GIAI NGAN"
+      - "HOAN UNG"
+      - "TAM UNG"
+    auto_process: true
+    priority: 1
+    requires_object: false
+    object_catalog: none
+
   - flow: bao_no
     use_case: "Bảo hiểm"
     account: "338"
@@ -98,7 +155,26 @@ rules:
     object_catalog: none
 
   - flow: bao_no
-    use_case: "Tạm ứng tiền hàng"
+    rule_id: "buy_foreign_currency"
+    direction: "money_out"
+    use_case: "Mua ngoại tệ"
+    account: "1122"
+    bank_scope: ["VCB", "ACB", "MSB"]
+    include_keywords:
+      - "MUA NGOAI TE"
+      - "MUA USD"
+      - "MUA EUR"
+      - "MUA JPY"
+      - "MUA GBP"
+    context_keywords: []
+    exclude_keywords: []
+    auto_process: true
+    priority: 65
+    requires_object: false
+    object_catalog: none
+
+  - flow: bao_no
+    use_case: "Tạm ứng cá nhân nội bộ"
     account: "141"
     bank_scope: ["VCB", "ACB", "MSB"]
     include_keywords:
@@ -107,17 +183,19 @@ rules:
       - "CHUYEN TIEN TAM UNG"
       - "UNG TIEN"
       - "TAM UNG CHO"
+      - "T UNG"
+      - "T UNG CHO"
     context_keywords: []
     exclude_keywords: []
     auto_process: true
     priority: 70
     requires_object: true
-    object_catalog: payable
+    object_catalog: internal
 
   - flow: bao_no
     use_case: "Trả phí hải quan"
     account: "6421"
-    bank_scope: ["VCB"]
+    bank_scope: ["VCB", "ACB", "MSB"]
     include_keywords: ["PHI HAI QUAN", "LE PHI HAI QUAN", "PHI HQ", "LE PHI HQ"]
     context_keywords: []
     exclude_keywords:
@@ -130,9 +208,40 @@ rules:
     object_catalog: none
 
   - flow: bao_no
+    rule_id: "loan_principal_repayment"
+    direction: "money_out"
+    use_case: "Trả nợ vay ngân hàng"
+    account: "341"
+    bank_scope: ["VCB", "ACB", "MSB"]
+    include_keywords:
+      - "TRA NO VAY"
+      - "THU NO TK VAY"
+      - "THU NO"
+      - "NO VAY"
+      - "GOC VAY"
+      - "TRA GOC"
+      - "THANH TOAN KHOAN VAY"
+      - "LOAN REPAYMENT"
+      - "PRINCIPAL PAYMENT"
+    context_keywords: []
+    exclude_keywords:
+      - "LAI VAY"
+      - "TRA LAI VAY"
+      - "TIEN LAI"
+      - "PHI NGAN HANG"
+      - "PHI CHUYEN TIEN"
+      - "PHI"
+      - "CA NHAN HOAN VAY"
+      - "HOAN VAY"
+    auto_process: true
+    priority: 85
+    requires_object: false
+    object_catalog: none
+
+  - flow: bao_no
     use_case: "Chi phí tài chính"
     account: "635"
-    bank_scope: ["VCB"]
+    bank_scope: ["VCB", "ACB", "MSB"]
     include_keywords:
       - "LAI VAY"
       - "TRA LAI VAY"
@@ -143,6 +252,7 @@ rules:
       - "PHI DICH VU NGAN HANG"
       - "THU PHI"
       - "PHI BAO LANH"
+      - "PHI PHAT HANH BAO LANH"
     context_keywords: []
     exclude_keywords: ["CANG PHI", "PHI DAI LY"]
     auto_process: true
@@ -156,9 +266,16 @@ rules:
     bank_scope: ["VCB", "ACB", "MSB"]
     include_keywords:
       - "TT CHO"
+      - "CT CHO"
       - "THANH TOAN"
       - "THANH TOAN TIEN"
       - "CHUYEN TIEN"
+      - "TT TIENHANG"
+      - "TT TIEN HANG"
+      - "TT PHI"
+      - "TT CUOC"
+      - "TT CANG"
+      - "DAT COC"
       - "CK 24/7 CHO"
       - "TRA TIEN"
       - "HD"
@@ -184,12 +301,85 @@ rules:
       - "TRA LAI TAI KHOAN"
       - "LAI TIEN GUI"
       - "LAI TAI KHOAN"
+      - "INTEREST PAYMENT"
     context_keywords: []
     exclude_keywords: ["HOAN LAI TIEN", "CHUYEN TRA LAI TIEN"]
     auto_process: true
     priority: 10
     requires_object: false
     object_catalog: none
+
+  - flow: bao_co
+    rule_id: "sell_foreign_currency"
+    direction: "money_in"
+    use_case: "Bán ngoại tệ"
+    account: "1122"
+    bank_scope: ["VCB", "ACB", "MSB"]
+    include_keywords:
+      - "BAN NGOAI TE"
+      - "BAN USD"
+      - "BAN EUR"
+      - "BAN JPY"
+      - "BAN GBP"
+      - "QUY DOI NGOAI TE"
+      - "CHUYEN DOI NGOAI TE"
+      - "MUA TU BAO CO NGOAI TE"
+      - "MUA TU BAO CO"
+      - "MUA TU BAO CO SO TIEN"
+      - "MUA TU BAO CO KH SO TIEN"
+    context_keywords: []
+    exclude_keywords: []
+    auto_process: true
+    priority: 15
+    requires_object: false
+    object_catalog: none
+
+  - flow: bao_co
+    rule_id: "loan_disbursement"
+    direction: "money_in"
+    use_case: "Nhận tiền vay hoặc giải ngân"
+    account: "341"
+    bank_scope: ["VCB", "ACB", "MSB"]
+    include_keywords:
+      - "GIAI NGAN"
+      - "GIAI NGAN KHOAN VAY"
+      - "NHAN TIEN VAY"
+      - "VAY NGAN HANG"
+      - "NHAN KHOAN VAY"
+      - "DISBURSEMENT"
+    context_keywords: []
+    exclude_keywords:
+      - "HOAN VAY"
+      - "CA NHAN HOAN VAY"
+      - "HOAN LAI"
+    auto_process: true
+    priority: 18
+    requires_object: false
+    object_catalog: none
+
+  - flow: bao_co
+    rule_id: "personal_advance_to_company"
+    direction: "money_in"
+    use_case: "Ca nhan tam ung tien cho cong ty"
+    account: "141"
+    bank_scope: ["VCB", "ACB", "MSB"]
+    include_keywords:
+      - "LE NGOC DUC CHUYEN TIEN"
+      - "LE NGOC DUC CHUYEN KHOAN"
+      - "IB LE NGOC DUC CHUYEN KHOAN"
+    context_keywords: []
+    exclude_keywords:
+      - "THANH TOAN HOA DON"
+      - "THANH TOAN CONG NO"
+      - "CONG NO"
+      - "HOA DON"
+      - "HOAN VAY"
+      - "TRA NO"
+    auto_process: true
+    priority: 19
+    requires_object: true
+    object_catalog: internal
+    reason_template: "Nhận tiền tạm ứng cá nhân {object_code}"
 
   - flow: bao_co
     use_case: "Nhận tiền tạm ứng"
@@ -207,7 +397,53 @@ rules:
     auto_process: true
     priority: 20
     requires_object: true
+    object_catalog: internal
+
+  - flow: bao_co
+    rule_id: "customer_receivable_contextual_transfer"
+    direction: "money_in"
+    use_case: "Công nợ của khách"
+    account: "131"
+    bank_scope: ["VCB", "ACB", "MSB"]
+    include_keywords:
+      - "CHUYEN TIEN"
+    context_keywords:
+      - "CONG TY"
+      - "CTY"
+      - "CT "
+      - "CO SO"
+      - "CHI NHANH"
+      - "COMPANY"
+      - "CORPORATION"
+      - "TAX CODE"
+      - "MUA"
+    exclude_keywords:
+      - "LE NGOC DUC"
+      - "LE PHAM"
+      - "CONG TY TNHH LE PHAM"
+      - "CTY TNHH LE PHAM"
+    auto_process: true
+    priority: 95
+    requires_object: true
     object_catalog: receivable
+
+  - flow: bao_co
+    use_case: "Phí phát lệnh"
+    account: "131"
+    bank_scope: []
+    include_keywords:
+      - "PHI PHAT LENH"
+      - "PHI BILL"
+      - "BL"
+    context_keywords: []
+    exclude_keywords: []
+    auto_process: true
+    priority: 80
+    requires_object: true
+    object_catalog: receivable
+    amount_equals: 1100000
+    forced_object_code: "001"
+    reason_template: "Thanh toán phí phát lệnh ({object_name})"
 
   - flow: bao_co
     use_case: "Công nợ của khách"
@@ -216,6 +452,18 @@ rules:
     include_keywords:
       - "THANH TOAN"
       - "TT"
+      - "PAY INV"
+      - "STSTMSHP"
+      - "PHI PHAT LENH"
+      - "NOP PHI BILL"
+      - "TIEN COC"
+      - "TIEN THUE VP"
+      - "TIEN THUE VAN PHONG"
+      - "DIEN NUOC"
+      - "VOI HOT"
+      - "CHARGEDETAILS OUR"
+      - "CHUYEN TIEN MUA"
+      - "MUA KET SAT"
       - "CHUYEN KHOAN"
       - "TRA TIEN"
       - "THANH TOAN CONG NO"
@@ -231,6 +479,6 @@ rules:
     context_keywords: []
     exclude_keywords: []
     auto_process: true
-    priority: 30
+    priority: 100
     requires_object: true
     object_catalog: receivable

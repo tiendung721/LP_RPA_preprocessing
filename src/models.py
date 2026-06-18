@@ -35,6 +35,11 @@ class Rule:
     object_catalog: str = "none"
     error_note: str = ""
     context_required: bool = False
+    rule_id: str = ""
+    direction: str = ""
+    reason_template: str = ""
+    amount_equals: float | None = None
+    forced_object_code: str = ""
 
 
 @dataclass
@@ -44,6 +49,10 @@ class ObjectCandidate:
     score: float
     source: str = "fuzzy_name"
     matched_on: str = ""
+    tax_code: str = ""
+    group_name: str = ""
+    group_code: str = ""
+    ml_score: float = 0.0
 
 
 @dataclass
@@ -78,6 +87,8 @@ class RuleMatch:
 class ExtractedEntities:
     counterparty_hint: str = ""
     counterparty_source: str = ""
+    cash_person_name: str = ""
+    cash_person_source: str = ""
     cleaned_description: str = ""
     intent: str = ""
     invoice_no: str = ""
@@ -96,6 +107,18 @@ class ClassificationResult:
     source: str = "none"
     status: str = "NO_MODEL"
     note: str = ""
+
+
+@dataclass
+class ObjectRankResult:
+    status: str = "NO_MODEL"
+    best_code: str = ""
+    best_name: str = ""
+    confidence: float = 0.0
+    gap: float = 0.0
+    decision: str = "FALLBACK"
+    note: str = ""
+    ranked_candidates: list[ObjectCandidate] = field(default_factory=list)
 
 
 @dataclass
@@ -132,8 +155,16 @@ class ProcessedTransaction:
     raw_data: dict[str, Any] = field(default_factory=dict)
     entities: ExtractedEntities = field(default_factory=ExtractedEntities)
     ml_result: ClassificationResult = field(default_factory=ClassificationResult)
+    object_ml_result: ObjectRankResult = field(default_factory=ObjectRankResult)
     verification_result: VerificationResult = field(default_factory=VerificationResult)
     object_match_source: str = ""
     transaction_uid: str = ""
     source_sheet: str = ""
     rpa_status: str = ""
+    rpa_message: str = ""
+    bank_direction: str = ""
+    is_duplicate: bool = False
+    duplicate_of: str = ""
+    foreign_currency: str = ""
+    foreign_amount: float = 0.0
+    exchange_rate: float = 0.0

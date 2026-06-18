@@ -27,12 +27,15 @@ class BaseBankParser:
 
     def parse(self, path: str | Path) -> list[Transaction]:
         path = Path(path)
+        self.skipped_row_count = 0
+        self.warnings: list[dict[str, Any]] = []
         sheet_name, header_row, column_map = self._find_header(path)
         df = pd.read_excel(path, sheet_name=sheet_name, header=header_row, dtype=object)
         transactions: list[Transaction] = []
 
         for idx, row in df.iterrows():
             if self._is_blank_row(row):
+                self.skipped_row_count += 1
                 continue
             transaction = self._row_to_transaction(
                 path=path,
@@ -44,6 +47,8 @@ class BaseBankParser:
             )
             if self._should_keep(transaction):
                 transactions.append(transaction)
+            else:
+                self.skipped_row_count += 1
         return transactions
 
     def _row_to_transaction(

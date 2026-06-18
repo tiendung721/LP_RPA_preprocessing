@@ -10,12 +10,14 @@ class RuleEngine:
     def __init__(self, rules: list[Rule]):
         self.rules = sorted(rules, key=lambda rule: (rule.flow, rule.priority))
 
-    def match(self, flow: str, bank: str, description: str) -> RuleMatch | None:
+    def match(self, flow: str, bank: str, description: str, amount: float | None = None) -> RuleMatch | None:
         normalized = normalize_text(description)
         for rule in self.rules:
             if rule.flow != flow:
                 continue
             if rule.bank_scope and bank.upper() not in {item.upper() for item in rule.bank_scope}:
+                continue
+            if rule.amount_equals is not None and not _amount_matches(amount, rule.amount_equals):
                 continue
             if any(contains_keyword(normalized, keyword) for keyword in rule.exclude_keywords):
                 continue
@@ -52,6 +54,12 @@ def contains_keyword(normalized_text: str, keyword: str) -> bool:
     tokens = keyword_norm.split()
     pattern = r"(?<![A-Z0-9])" + r"\s+".join(re.escape(token) for token in tokens) + r"(?![A-Z0-9])"
     return re.search(pattern, normalized_text) is not None
+
+
+def _amount_matches(actual: float | None, expected: float) -> bool:
+    if actual is None:
+        return False
+    return abs(float(actual) - float(expected)) < 0.01
 
 
 def _is_strong_keyword(keyword_norm: str) -> bool:

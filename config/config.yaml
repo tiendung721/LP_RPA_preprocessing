@@ -12,6 +12,7 @@ output:
   excel_file: "rpa_input.xlsx"
   tracking_file: "rpa_tracking.json"
   summary_file: "rpa_summary.xlsx"
+  object_match_review_file: "object_match_review.xlsx"
   log_file: "agent_run.log"
 
 rules:
@@ -19,10 +20,15 @@ rules:
 
 own_company_file: "config/own_company.yaml"
 object_aliases_file: "config/object_aliases.yaml"
+object_overrides_file: "config/object_overrides.yaml"
+internal_objects_file: "input/MA NOI BO CTY.xlsx"
 
 ml:
-  enabled: true
+  enabled: false
+  object_ranker_enabled: true
   transaction_classifier_model: "models/transaction_classifier.joblib"
   object_ranker_model: "models/object_ranker.joblib"
   min_classification_confidence: 0.75
-  min_object_confidence: 0.80
+  min_object_confidence: 0.85
+  min_object_gap: 0.15
+  object_ranker_min_training_rows: 50

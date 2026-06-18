@@ -27,13 +27,10 @@ def main() -> int:
         raise SystemExit(f"Tracking file not found: {tracking_path}")
 
     records = json.loads(tracking_path.read_text(encoding="utf-8"))
-    reviewed_rows = [_reviewed_transaction_row(item) for item in records if _has_training_label(item)]
-    object_rows = [_object_training_row(item) for item in records if _has_object_label(item)]
-    exception_rows = [_exception_review_row(item) for item in records if item.get("status") != "OK"]
-
-    reviewed_df = pd.DataFrame(reviewed_rows)
-    object_df = pd.DataFrame(object_rows)
-    exception_df = pd.DataFrame(exception_rows)
+    frames = build_training_frames(records)
+    reviewed_df = frames["reviewed"]
+    object_df = frames["object"]
+    exception_df = frames["exception"]
 
     reviewed_path = output_dir / "reviewed_transactions.xlsx"
     transaction_path = output_dir / "transaction_classifier_training.xlsx"
@@ -62,6 +59,17 @@ def main() -> int:
     return 0
 
 
+def build_training_frames(records: list[dict[str, Any]]) -> dict[str, pd.DataFrame]:
+    reviewed_rows = [_reviewed_transaction_row(item) for item in records if _has_training_label(item)]
+    object_rows = [row for item in records for row in _object_training_rows(item)]
+    exception_rows = [_exception_review_row(item) for item in records if _processing_status(item) != "OK"]
+    return {
+        "reviewed": pd.DataFrame(reviewed_rows),
+        "object": pd.DataFrame(object_rows),
+        "exception": pd.DataFrame(exception_rows),
+    }
+
+
 def _has_training_label(item: dict[str, Any]) -> bool:
     if item.get("flow") not in FLOW_ACCOUNT_SIDE:
         return False
@@ -74,13 +82,22 @@ def _has_training_label(item: dict[str, Any]) -> bool:
 
 def _has_object_label(item: dict[str, Any]) -> bool:
     code = str(item.get("matched_object_code") or "")
-    if item.get("status") != "OK":
+    if _processing_status(item) != "OK":
         return False
     if not code or code == "ERROR":
         return False
     if code.upper() == "LE PHAM":
         return False
     return item.get("flow") in FLOW_ACCOUNT_SIDE
+
+
+def _has_safe_object_label(item: dict[str, Any]) -> bool:
+    if not _has_object_label(item):
+        return False
+    review_status = str(item.get("review_status") or "").upper()
+    if review_status in {"OK", "APPROVED", "REVIEWED"}:
+        return True
+    return str(item.get("object_match_source") or "") in {"tax_code", "alias_match", "catalog_phrase"}
 
 
 def _reviewed_transaction_row(item: dict[str, Any]) -> dict[str, Any]:
@@ -118,7 +135,34 @@ def _reviewed_transaction_row(item: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _object_training_row(item: dict[str, Any]) -> dict[str, Any]:
+def _object_training_rows(item: dict[str, Any]) -> list[dict[str, Any]]:
+    if not _has_safe_object_label(item):
+        return []
+    correct_code = str(item.get("matched_object_code") or "")
+    candidates = list(item.get("matched_candidates") or [])
+    if not any(str(candidate.get("code") or "") == correct_code for candidate in candidates):
+        candidates.insert(
+            0,
+            {
+                "code": correct_code,
+                "name": item.get("matched_object_name", ""),
+                "score": item.get("confidence", 0),
+                "source": item.get("object_match_source", ""),
+                "matched_on": "",
+            },
+        )
+    rows: list[dict[str, Any]] = []
+    seen_codes: set[str] = set()
+    for candidate in candidates:
+        code = str(candidate.get("code") or "")
+        if not code or code in seen_codes:
+            continue
+        seen_codes.add(code)
+        rows.append(_object_training_row(item, candidate, label=1 if code == correct_code else 0))
+    return rows
+
+
+def _object_training_row(item: dict[str, Any], candidate: dict[str, Any], label: int) -> dict[str, Any]:
     entities = item.get("entities") or {}
     return {
         "source_file": item.get("source_file", ""),
@@ -130,13 +174,25 @@ def _object_training_row(item: dict[str, Any]) -> dict[str, Any]:
         "counterparty_raw": item.get("counterparty_raw", ""),
         "counterparty_hint": entities.get("counterparty_hint", ""),
         "cleaned_description": entities.get("cleaned_description", ""),
+        "intent": entities.get("intent", ""),
+        "service_hint": entities.get("service_hint", ""),
+        "tax_code": entities.get("tax_code", ""),
         "object_match_source": item.get("object_match_source", ""),
         "correct_object_code": item.get("matched_object_code", ""),
         "correct_object_name": item.get("matched_object_name", ""),
         "correct_use_case": item.get("use_case", ""),
         "correct_account": _correct_account(item),
+        "candidate_code": candidate.get("code", ""),
+        "candidate_name": candidate.get("name", ""),
+        "candidate_score": candidate.get("score", 0),
+        "candidate_source": candidate.get("source", ""),
+        "candidate_matched_on": candidate.get("matched_on", ""),
+        "candidate_tax_code": candidate.get("tax_code", ""),
+        "candidate_group_name": candidate.get("group_name", ""),
+        "candidate_group_code": candidate.get("group_code", ""),
         "confidence": item.get("confidence", 0),
-        "label": 1,
+        "label": int(label),
+        "training_source": "SAFE_OBJECT_MATCH",
     }
 
 
@@ -165,6 +221,10 @@ def _exception_review_row(item: dict[str, Any]) -> dict[str, Any]:
 def _correct_account(item: dict[str, Any]) -> str:
     side = FLOW_ACCOUNT_SIDE.get(item.get("flow"), "")
     return str(item.get(side) or "") if side else ""
+
+
+def _processing_status(item: dict[str, Any]) -> str:
+    return str(item.get("processing_status") or item.get("original_status") or item.get("status") or "")
 
 
 if __name__ == "__main__":

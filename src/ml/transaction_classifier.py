@@ -19,17 +19,14 @@ class TransactionClassifier:
         self.enabled = enabled
         self.model: Any | None = None
         self.load_error = ""
-        if self.enabled and self.model_path and self.model_path.exists() and joblib:
-            try:
-                self.model = joblib.load(self.model_path)
-            except Exception as exc:  # noqa: BLE001 - fall back to rules if model cannot load
-                self.load_error = str(exc)
+        self._load_attempted = False
 
     @property
     def available(self) -> bool:
         return self.model is not None
 
     def predict(self, flow: str, bank: str, description: str, entities: ExtractedEntities) -> ClassificationResult:
+        self._ensure_loaded()
         if not self.available:
             note = self.load_error or "ML classifier model not found"
             return ClassificationResult(source="ml", status="NO_MODEL", note=note)
@@ -46,6 +43,24 @@ class TransactionClassifier:
                 confidence = 0.0
         use_case, account = _split_label(str(label))
         return ClassificationResult(use_case=use_case, account=account, confidence=confidence, source="ml", status="OK")
+
+    def _ensure_loaded(self) -> None:
+        if self._load_attempted or self.model is not None:
+            return
+        self._load_attempted = True
+        if not self.enabled:
+            self.load_error = "ML classifier disabled"
+            return
+        if not self.model_path or not self.model_path.exists():
+            self.load_error = "ML classifier model not found"
+            return
+        if not joblib:
+            self.load_error = "joblib is not installed"
+            return
+        try:
+            self.model = joblib.load(self.model_path)
+        except Exception as exc:  # noqa: BLE001 - fall back to rules if model cannot load
+            self.load_error = str(exc)
 
 
 def _split_label(label: str) -> tuple[str, str]:

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from ..models import Transaction
+from ..normalizer import normalize_text
 from .base_parser import BaseBankParser
 
 
@@ -18,3 +20,23 @@ class MSBParser(BaseBankParser):
         "debit_amount": ["NO DEBIT"],
         "credit_amount": ["CO CREDIT"],
     }
+
+    def _should_keep(self, transaction: Transaction) -> bool:
+        raw_text = normalize_text(" ".join(str(value) for value in transaction.raw_data.values()))
+        if any(
+            marker in raw_text
+            for marker in (
+                "SO DU DAU KY",
+                "OPENING BALANCE",
+                "TONG PHAT SINH",
+                "TOTAL DEBIT CREDIT AMOUNT",
+                "SO DU CUOI KY",
+                "CLOSING BALANCE",
+                "THONG TIN NAY DUOC IN",
+                "PRINTED ON",
+            )
+        ):
+            return False
+        if transaction.transaction_date is None:
+            return False
+        return super()._should_keep(transaction)
