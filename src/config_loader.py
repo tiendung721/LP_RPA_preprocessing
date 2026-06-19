@@ -12,6 +12,8 @@ from .normalizer import parse_amount
 
 DEFAULT_CONFIG: dict[str, Any] = {
     "bank_accounts": {"VCB": "1121VCB", "ACB": "1121CT", "MSB": "1121HB"},
+    "bank_object_codes": {"VCB": "VCB", "ACB": "ACB", "MSB": "MSBHB"},
+    "foreign_currency_accounts": {"VCB": "1122VCB", "ACB": "1122CT", "MSB": "1122HB"},
     "matching": {"min_score": 80, "min_gap": 8},
     "output": {
         "date_format": "%d/%m/%Y",
@@ -20,11 +22,13 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "summary_file": "rpa_summary.xlsx",
         "object_match_review_file": "object_match_review.xlsx",
         "log_file": "agent_run.log",
+        "rpa_reason_encoding": "",
     },
     "rules": {"default_rules_file": "config/default_rules.yaml"},
     "own_company_file": "config/own_company.yaml",
     "object_aliases_file": "config/object_aliases.yaml",
     "object_overrides_file": "config/object_overrides.yaml",
+    "reason_aliases_file": "config/reason_aliases.yaml",
     "internal_objects_file": "input/MA NOI BO CTY.xlsx",
     "ml": {
         "enabled": False,
@@ -100,6 +104,9 @@ def _rule_from_dict(item: dict[str, Any]) -> Rule:
         reason_template=str(item.get("reason_template", "") or ""),
         amount_equals=_optional_amount(item.get("amount_equals")),
         forced_object_code=str(item.get("forced_object_code", "") or "").strip(),
+        default_object_code=str(item.get("default_object_code", "") or "").strip(),
+        default_object_from_bank=bool(item.get("default_object_from_bank", False)),
+        account_from_foreign_currency_bank=bool(item.get("account_from_foreign_currency_bank", False)),
     )
 
 

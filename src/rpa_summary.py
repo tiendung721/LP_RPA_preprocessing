@@ -22,6 +22,7 @@ from .rpa_tracking import (
     load_tracking,
     normalize_status,
     normalize_tracking_record,
+    reset_all_records,
     validate_status,
 )
 from .transaction_identity import assign_transaction_uids
@@ -245,6 +246,15 @@ def abort_rpa_run(summary_path: str | Path, run_id: str, message: str = "") -> p
     records = [_ensure_summary_record(record) for record in df.to_dict("records")]
     aborted = [_ensure_summary_record(record) for record in abort_run_records(records, run_id, message=message)]
     result = pd.DataFrame(aborted, columns=SUMMARY_COLUMNS)
+    write_summary(result, summary_path)
+    return result
+
+
+def reset_all_rpa_status(summary_path: str | Path, message: str = "") -> pd.DataFrame:
+    df = load_summary(summary_path)
+    records = [_ensure_summary_record(record) for record in df.to_dict("records")]
+    reset_records = [_ensure_summary_record(record) for record in reset_all_records(records, message=message)]
+    result = pd.DataFrame(reset_records, columns=SUMMARY_COLUMNS)
     write_summary(result, summary_path)
     return result
 

@@ -1,6 +1,6 @@
 from datetime import date
 
-from src.normalizer import normalize_text, parse_amount, parse_date
+from src.normalizer import clean_display_text, normalize_text, parse_amount, parse_date
 
 
 def test_normalize_vietnamese_text():
@@ -17,6 +17,11 @@ def test_normalize_tcvn3_catalog_text():
 
 def test_normalize_tcvn3_catalog_text_with_uong():
     assert normalize_text("§¹i Lý Hµng H¶i §­êng BiÓn") == "DAI LY HANG HAI DUONG BIEN"
+
+
+def test_clean_display_text_repairs_legacy_vietnamese_catalog_names():
+    assert clean_display_text("C«ng ty TNHH Wan HAi ViÖt Nam") == "Cong ty TNHH Wan HAi Viet Nam"
+    assert clean_display_text("C¤NG TY TNHH OSSTEM INPLANT VINA") == "CONG TY TNHH OSSTEM INPLANT VINA"
 
 
 def test_normalize_business_typos_and_abbreviations():

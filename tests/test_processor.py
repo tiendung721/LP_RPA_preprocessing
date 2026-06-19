@@ -9,6 +9,7 @@ from src.models import ExtractedEntities, ObjectCandidate, ProcessedTransaction,
 from src.object_matcher import ObjectMatcher
 from src.output_writer import RPA_BUSINESS_COLUMNS, RPA_COLUMNS, write_excel, write_object_match_review
 from src.processor import process_transaction
+from src.reason_aliases import load_reason_purposes
 from src.reason_generator import generate_reason, reason_requires_object_code
 from src.rule_engine import RuleEngine
 
@@ -80,23 +81,60 @@ def test_process_transaction_uses_object_ranker_for_ambiguous_candidates():
     assert result.object_ml_result.status == "OK"
 
 
-def test_generate_reason_uses_business_template_and_object_code():
-    assert generate_reason("bao_no", "331", "1121CT", "PIL") == "Thanh toán công nợ PIL"
+def test_generate_reason_uses_payment_purpose_and_object_name():
+    purposes = load_reason_purposes(PROJECT_ROOT / "config" / "reason_aliases.yaml")
+    assert (
+        generate_reason(
+            "bao_no",
+            "331",
+            "1121CT",
+            "PIL",
+            object_name="Công ty PIL Việt Nam",
+            description="TT CUOC VC CHO PIL",
+            purposes=purposes,
+        )
+        == "Thanh toán cước vận chuyển Công ty PIL Việt Nam"
+    )
+    assert (
+        generate_reason(
+            "bao_no",
+            "331",
+            "1121CT",
+            "PETROLIMEX",
+            object_name="Tæng c«ng ty ho¸ dÇu PETROLIMEX - CTCP",
+            description="TT TIEN XANG DAU PETROLIMEX",
+            purposes=purposes,
+        )
+        == "Thanh toán tiền xăng dầu Tong cong ty hoa dau PETROLIMEX - CTCP"
+    )
+    assert (
+        generate_reason(
+            "bao_co",
+            "1121VCB",
+            "131",
+            "MINHHUY",
+            object_name="Công ty TNHH Minh Huy",
+            description="TT TIEN THUE VP",
+            purposes=purposes,
+        )
+        == "Thu tiền thuê văn phòng Công ty TNHH Minh Huy"
+    )
+    assert generate_reason("bao_no", "331", "1121CT", "PIL") == "Thanh toán PIL"
+    assert generate_reason("bao_co", "1121VCB", "131", "KVIII") == "Thu tiền KVIII"
     assert generate_reason("bao_no", "141", "1121CT", "KHÁCH A") == "Tạm ứng cá nhân KHÁCH A"
     assert generate_reason("bao_no", "334", "1121CT", "") == "Trả lương nhân viên"
-    assert generate_reason("bao_co", "1121VCB", "131", "KVIII") == "Thu tiền công nợ KVIII"
     assert generate_reason("bao_co", "1121VCB", "515", "") == "Lãi tiền gửi ngân hàng"
     assert reason_requires_object_code("bao_no", "331", "1121CT")
     assert not reason_requires_object_code("bao_no", "334", "1121CT")
 
 
-def test_process_transaction_reason_does_not_use_object_name():
+def test_process_transaction_reason_uses_object_name_and_payment_purpose():
     txn = Transaction(
         source_file="sample.xlsx",
         bank="ACB",
         transaction_date=date(2026, 4, 1),
         doc_no="1",
-        description="THANH TOAN KHU VUC III",
+        description="THANH TOAN CUOC VAN CHUYEN KHU VUC III",
         counterparty_raw="Khu Vuc III",
         debit_amount=1000,
         credit_amount=0,
@@ -115,7 +153,34 @@ def test_process_transaction_reason_does_not_use_object_name():
     assert result.status == "OK"
     assert result.object_code == "PIL"
     assert result.object_name == "Cong ty Khu Vuc III"
-    assert result.reason == "Thanh toán công nợ PIL"
+    assert result.reason == "Thanh toán cước vận chuyển Cong ty Khu Vuc III"
+
+
+def test_process_transaction_bao_co_reason_uses_thu_tien_without_cong_no():
+    txn = Transaction(
+        source_file="sample.xlsx",
+        bank="ACB",
+        transaction_date=date(2026, 4, 1),
+        doc_no="1",
+        description="TT TIEN THUE VP KHU VUC III",
+        counterparty_raw="Khu Vuc III",
+        debit_amount=0,
+        credit_amount=1000,
+        original_row_index=2,
+    )
+    receivable = ObjectMatcher.from_records(
+        [
+            {"code": "KVIII", "name": "Cong ty Khu Vuc III"},
+        ],
+        min_score=80,
+        min_gap=8,
+    )
+
+    result = process_transaction(txn, _config(), _engine(), receivable, ObjectMatcher([]))
+
+    assert result.status == "OK"
+    assert result.object_code == "KVIII"
+    assert result.reason == "Thu tiền thuê văn phòng Cong ty Khu Vuc III"
 
 
 def test_missing_object_code_required_for_reason_goes_exception(tmp_path):
@@ -222,6 +287,39 @@ def test_output_has_separate_flow_sheets_and_excludes_error(tmp_path):
     assert bao_no_values["Ngân hàng"] == "ACB"
     assert wb["BAO_NO_INPUT"].max_row == 2
     assert wb["BAO_CO_INPUT"].max_row == 2
+
+
+def test_rpa_input_can_export_only_reason_as_tcvn3(tmp_path):
+    bao_no = ProcessedTransaction(
+        source_file="sample.xlsx",
+        original_row_index=2,
+        bank="ACB",
+        flow="bao_no",
+        transaction_date=date(2026, 4, 1),
+        object_code="ABC",
+        object_name="ABC",
+        reason="Nhận tiền tạm ứng cá nhân DUC",
+        debit_account="331",
+        credit_account="1121CT",
+        amount=1000,
+        use_case="Chi phí thanh toán",
+        original_content="TT CHO ABC",
+        counterparty_raw="",
+        doc_no="1",
+        status="OK",
+        error_note="",
+        confidence=0.95,
+    )
+    output_file = tmp_path / "rpa_input.xlsx"
+    write_excel([bao_no], output_file, rpa_reason_encoding="tcvn3")
+    wb = load_workbook(output_file, data_only=True)
+    headers = [cell.value for cell in wb["BAO_NO_INPUT"][1]]
+    values = dict(zip(headers, [cell.value for cell in wb["BAO_NO_INPUT"][2]]))
+
+    assert values["Lí do"] == "NhËn tiÒn t¹m øng c¸ nh©n DUC"
+    assert values["Lí do Unicode"] == "Nhận tiền tạm ứng cá nhân DUC"
+    assert values["Mã ĐT"] == "ABC"
+    assert values["Ngân hàng"] == "ACB"
 
 
 def test_write_object_match_review_for_object_errors(tmp_path):

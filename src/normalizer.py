@@ -37,6 +37,14 @@ def normalize_text(text: Any) -> str:
     return value
 
 
+def clean_display_text(text: Any) -> str:
+    if is_empty(text):
+        return ""
+    value = _repair_vietnamese_encoding(str(text))
+    value = unicodedata.normalize("NFKC", value).strip()
+    return re.sub(r"\s+", " ", value)
+
+
 def _normalize_business_terms(text: str) -> str:
     replacements = [
         (r"\bTHANH\s+TON\b", "THANH TOAN"),
@@ -69,7 +77,7 @@ def _looks_like_tcvn3(text: str) -> bool:
 
 
 _UTF8_MOJIBAKE_MARKERS = ("Ã", "Â", "áº", "á»", "Ä", "Æ")
-_TCVN3_STRONG_MARKERS = set("«¬µ¶·¸¹¨©ª§®ÇÊËÌÎÏÐÑÒÓÔÕÖ×ØÜÞßæ")
+_TCVN3_STRONG_MARKERS = set("«¬µ¶·¸¹¨©ª§®ÇÊËÌÎÏÐÑÒÓÔÕÖ×ØÜÞßæ¤¦¡¢")
 _TCVN3_ASCII_TRANSLATION = str.maketrans(
     {
         "µ": "a",

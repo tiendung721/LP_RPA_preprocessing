@@ -1,0 +1,152 @@
+purposes:
+  - code: goods
+    label: "tiền hàng"
+    aliases:
+      - "TIEN HANG"
+      - "TIENHANG"
+      - "TIEN HANGI"
+
+  - code: freight_charge
+    label: "cước vận chuyển"
+    aliases:
+      - "CUOC VAN CHUYEN"
+      - "CUOC VC"
+
+  - code: transport_payment
+    label: "tiền vận chuyển"
+    aliases:
+      - "TIEN VAN CHUYEN"
+
+  - code: port_fee
+    label: "phí cảng"
+    aliases:
+      - "PHI CANG"
+      - "CANG PHI"
+
+  - code: port_authority_fee
+    label: "phí cảng vụ"
+    aliases:
+      - "PHI CANG VU"
+      - "TIEN PHI CANG VU"
+
+  - code: pilotage_fee
+    label: "phí hoa tiêu"
+    aliases:
+      - "PHI HOA TIEU"
+
+  - code: quarantine_fee
+    label: "phí kiểm dịch"
+    aliases:
+      - "PHI KIEM DICH"
+
+  - code: delivery_order_fee
+    label: "phí lệnh giao hàng"
+    aliases:
+      - "PHI LENH GIAO HANG"
+      - "PHI CAP LENH"
+      - "PHI BILL"
+
+  - code: lift_on_lift_off
+    label: "cước nâng hạ"
+    aliases:
+      - "CUOC NANG HA"
+      - "PHI NANG HA"
+
+  - code: fuel
+    label: "tiền xăng dầu"
+    aliases:
+      - "TIEN XANG DAU"
+      - "XANG DAU"
+
+  - code: electricity
+    label: "tiền điện"
+    aliases:
+      - "TIEN DIEN"
+
+  - code: water
+    label: "tiền nước"
+    aliases:
+      - "TIEN NUOC"
+
+  - code: utilities
+    label: "tiền điện nước"
+    aliases:
+      - "TIEN DIEN NUOC"
+      - "DIEN NUOC"
+
+  - code: office_rent
+    label: "tiền thuê văn phòng"
+    aliases:
+      - "TIEN THUE VAN PHONG"
+      - "TIEN THUE VP"
+      - "THUE VAN PHONG"
+      - "THUE VP"
+
+  - code: office_rent_fee
+    label: "phí thuê văn phòng"
+    aliases:
+      - "PHI THUE VAN PHONG"
+
+  - code: insurance_fee
+    label: "phí bảo hiểm"
+    aliases:
+      - "PHI BAO HIEM"
+
+  - code: phone_charge
+    label: "cước điện thoại"
+    aliases:
+      - "CUOC DIEN THOAI"
+
+  - code: telecom_charge
+    label: "cước viễn thông"
+    aliases:
+      - "CUOC VIEN THONG"
+
+  - code: courier_charge
+    label: "cước chuyển phát"
+    aliases:
+      - "CUOC CHUYEN PHAT"
+
+  - code: inspection_fee
+    label: "phí đăng kiểm"
+    aliases:
+      - "PHI DANG KIEM"
+
+  - code: road_fee
+    label: "phí sử dụng đường bộ"
+    aliases:
+      - "PHI SU DUNG DUONG BO"
+      - "PHI DUONG BO"
+
+  - code: hotel_fee
+    label: "phí khách sạn"
+    aliases:
+      - "PHI KHACH SAN"
+
+  - code: cleaning_fee
+    label: "phí vệ sinh"
+    aliases:
+      - "PHI DICH VU VE SINH"
+      - "PHI VE SINH"
+
+  - code: waste_fee
+    label: "phí đổ rác"
+    aliases:
+      - "PHI DO RAC"
+
+  - code: tugboat_fee
+    label: "phí tàu lai"
+    aliases:
+      - "PHI TAU LAI"
+
+  - code: sea_freight
+    label: "cước biển"
+    aliases:
+      - "CUOC BIEN"
+      - "TIEN CUOC BIEN"
+
+  - code: crew_change_fee
+    label: "phí thay đổi thuyền viên"
+    aliases:
+      - "PHI THAY DOI THUYEN VIEN"
+      - "PHI THAY DOI TV"

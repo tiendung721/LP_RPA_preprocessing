@@ -40,6 +40,9 @@ class Rule:
     reason_template: str = ""
     amount_equals: float | None = None
     forced_object_code: str = ""
+    default_object_code: str = ""
+    default_object_from_bank: bool = False
+    account_from_foreign_currency_bank: bool = False
 
 
 @dataclass

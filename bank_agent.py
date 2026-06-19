@@ -40,6 +40,7 @@ def main() -> int:
         "payable_path": str(payable_path),
         "object_aliases_path": str(_resolve_path(config.get("object_aliases_file", "config/object_aliases.yaml"), project_root)),
         "object_overrides_path": str(_resolve_path(config.get("object_overrides_file", "config/object_overrides.yaml"), project_root)),
+        "reason_aliases_path": str(_resolve_path(config.get("reason_aliases_file", "config/reason_aliases.yaml"), project_root)),
         "internal_objects_path": str(_resolve_path(config.get("internal_objects_file", "input/MA NOI BO CTY.xlsx"), project_root)),
         "own_company_path": str(_resolve_path(config.get("own_company_file", "config/own_company.yaml"), project_root)),
     }

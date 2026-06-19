@@ -4,8 +4,8 @@ import argparse
 from pathlib import Path
 from typing import Any
 
-from src.rpa_summary import abort_rpa_run, finalize_rpa_run, load_summary, update_rpa_status as update_summary_status
-from src.rpa_tracking import abort_tracking_run, finalize_tracking_run, update_tracking_status, validate_status
+from src.rpa_summary import abort_rpa_run, finalize_rpa_run, load_summary, reset_all_rpa_status, update_rpa_status as update_summary_status
+from src.rpa_tracking import abort_tracking_run, finalize_tracking_run, reset_all_tracking, update_tracking_status, validate_status
 
 
 def parse_args() -> argparse.Namespace:
@@ -18,6 +18,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--run-id", default="", help="Optional run id")
     parser.add_argument("--finalize-run", action="store_true", help="Finalize successful rows from this run as hoan_thanh")
     parser.add_argument("--abort-run", action="store_true", help="Reset rows touched in this run back to chua_nhap")
+    parser.add_argument("--reset-all", action="store_true", help="Reset all rows back to chua_nhap")
     return parser.parse_args()
 
 
@@ -26,6 +27,23 @@ def main() -> int:
     output_dir = Path(args.output_dir)
     summary_path = output_dir / "rpa_summary.xlsx"
     tracking_path = output_dir / "rpa_tracking.json"
+
+    if args.reset_all:
+        if args.uid or args.finalize_run or args.abort_run:
+            print("Use --reset-all without --uid, --finalize-run, or --abort-run")
+            return 1
+        updated_targets = []
+        if summary_path.exists():
+            reset_all_rpa_status(summary_path, message=args.message)
+            updated_targets.append(str(summary_path))
+        if tracking_path.exists():
+            reset_all_tracking(tracking_path, message=args.message)
+            updated_targets.append(str(tracking_path))
+        if not updated_targets:
+            print(f"No RPA status files found in {output_dir}")
+            return 1
+        print(f"Reset all rows -> chua_nhap in {', '.join(updated_targets)}")
+        return 0
 
     if args.finalize_run or args.abort_run:
         if args.finalize_run and args.abort_run:

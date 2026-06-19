@@ -89,6 +89,7 @@ rules:
     priority: 20
     requires_object: false
     object_catalog: none
+    default_object_code: "CUCTHUE"
 
   - flow: bao_no
     use_case: "Trả thuế XNK"
@@ -110,6 +111,7 @@ rules:
     priority: 30
     requires_object: false
     object_catalog: none
+    default_object_code: "CUCTHUE"
     context_required: true
 
   - flow: bao_no
@@ -123,6 +125,7 @@ rules:
     priority: 40
     requires_object: false
     object_catalog: none
+    default_object_code: "CUCTHUE"
 
   - flow: bao_no
     use_case: "Trả thuế TNCN"
@@ -135,6 +138,7 @@ rules:
     priority: 50
     requires_object: false
     object_catalog: none
+    default_object_code: "CUCTHUE"
 
   - flow: bao_no
     use_case: "Trả lương nhân viên"
@@ -172,6 +176,8 @@ rules:
     priority: 65
     requires_object: false
     object_catalog: none
+    default_object_from_bank: true
+    account_from_foreign_currency_bank: true
 
   - flow: bao_no
     use_case: "Tạm ứng cá nhân nội bộ"
@@ -239,14 +245,31 @@ rules:
     object_catalog: none
 
   - flow: bao_no
+    rule_id: "bank_loan_interest"
+    direction: "money_out"
+    use_case: "Lãi vay ngân hàng"
+    account: "635"
+    bank_scope: ["VCB"]
+    include_keywords:
+      - "LAI VAY"
+      - "TRA LAI VAY"
+      - "CHI PHI LAI VAY"
+      - "TIEN LAI"
+    context_keywords: []
+    exclude_keywords: []
+    auto_process: true
+    priority: 88
+    requires_object: false
+    object_catalog: none
+    default_object_code: "VCB"
+    reason_template: "Lãi vay ngân hàng"
+
+  - flow: bao_no
     use_case: "Chi phí tài chính"
     account: "635"
     bank_scope: ["VCB", "ACB", "MSB"]
     include_keywords:
-      - "LAI VAY"
-      - "TRA LAI VAY"
       - "LAI NGAN HANG"
-      - "CHI PHI LAI VAY"
       - "PHI NGAN HANG"
       - "PHI CHUYEN TIEN"
       - "PHI DICH VU NGAN HANG"
@@ -259,6 +282,7 @@ rules:
     priority: 90
     requires_object: false
     object_catalog: none
+    default_object_from_bank: true
 
   - flow: bao_no
     use_case: "Chi phí thanh toán"
@@ -333,6 +357,8 @@ rules:
     priority: 15
     requires_object: false
     object_catalog: none
+    default_object_from_bank: true
+    account_from_foreign_currency_bank: true
 
   - flow: bao_co
     rule_id: "loan_disbursement"
@@ -443,7 +469,7 @@ rules:
     object_catalog: receivable
     amount_equals: 1100000
     forced_object_code: "001"
-    reason_template: "Thanh toán phí phát lệnh ({object_name})"
+    reason_template: "Thu phí cấp lệnh khách lẻ"
 
   - flow: bao_co
     use_case: "Công nợ của khách"

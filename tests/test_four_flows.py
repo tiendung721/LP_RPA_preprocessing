@@ -13,7 +13,7 @@ from src.models import Transaction
 from src.object_aliases import load_object_aliases
 from src.object_matcher import ObjectMatcher
 from src.object_overrides import load_object_overrides
-from src.output_writer import RPA_BUSINESS_COLUMNS, RPA_THU_TIEN_MAT_COLUMNS, write_excel, write_outputs
+from src.output_writer import RPA_BUSINESS_COLUMNS, RPA_REASON_UNICODE_COLUMN, RPA_THU_TIEN_MAT_COLUMNS, write_excel, write_outputs
 from src.parsers.acb_parser import ACBParser
 from src.parsers.msb_parser import MSBParser
 from src.parsers.vcb_parser import VCBParser
@@ -157,33 +157,68 @@ def test_bao_co_rules_use_specific_accounts_before_customer_receivable():
     advance_refund = _process("HOAN LAI TAM UNG", credit=100, counterparty="LE NGOC DUC")
     assert advance_refund.credit_account == "141"
     assert advance_refund.object_code == "DUC"
-    assert _process("BAN NGOAI TE TY GIA USD VND", credit=100).credit_account == "1122"
-    assert _process("MUA TU BAO CO NGOAI TE THANH TOAN HD", credit=100, receivable=customer).credit_account == "1122"
+    vcb_fx = _process("BAN NGOAI TE TY GIA USD VND", credit=100, bank="VCB")
+    assert vcb_fx.credit_account == "1122VCB"
+    assert vcb_fx.object_code == "VCB"
+    msb_fx = _process("MUA TU BAO CO NGOAI TE THANH TOAN HD", credit=100, bank="MSB", receivable=customer)
+    assert msb_fx.credit_account == "1122HB"
+    assert msb_fx.object_code == "MSBHB"
     assert _process("GIAI NGAN KHOAN VAY", credit=100).credit_account == "341"
     assert _process("LE NGOC DUC HOAN VAY", credit=100).credit_account != "341"
     fx1 = _process("M1HH/KHDN/ MUA TU BAO CO SO TIEN 42000 USD, TY GIA 26.217", credit=1101114000, bank="ACB")
     assert fx1.status == "OK"
-    assert fx1.credit_account == "1122"
+    assert fx1.credit_account == "1122CT"
+    assert fx1.object_code == "ACB"
     assert fx1.foreign_currency == "USD"
     assert fx1.foreign_amount == 42000
     assert fx1.exchange_rate == 26217
     assert fx1.reason == "Bán ngoại tệ 42000 USD tỷ giá 26217"
     fx2 = _process("M1HH/KHDN/ MUA TU BAO CO KH SO TIEN 50.000 USD, TY GIA 26228,", credit=1311400000, bank="ACB")
     assert fx2.status == "OK"
-    assert fx2.credit_account == "1122"
+    assert fx2.credit_account == "1122CT"
     assert fx2.foreign_amount == 50000
     assert fx2.exchange_rate == 26228
 
 
 def test_bao_no_rules_for_forex_loan_and_existing_bank_fee():
-    assert _process("MUA NGOAI TE", debit=100).debit_account == "1122"
-    assert _process("MUA USD", debit=100).debit_account == "1122"
+    vcb_buy = _process("MUA NGOAI TE", debit=100, bank="VCB")
+    assert vcb_buy.debit_account == "1122VCB"
+    assert vcb_buy.object_code == "VCB"
+    msb_buy = _process("MUA USD", debit=100, bank="MSB")
+    assert msb_buy.debit_account == "1122HB"
+    assert msb_buy.object_code == "MSBHB"
     assert _process("THU NO TK VAY 001065887769", debit=100).debit_account == "341"
     assert _process("TRA GOC KHOAN VAY", debit=100).debit_account == "341"
-    assert _process("THANH TOAN USD", debit=100).debit_account != "1122"
-    assert _process("PHI NGAN HANG", debit=100).debit_account == "635"
-    assert _process("THU PHI PHAT HANH BAO LANH THUC HIEN HOP DONG", debit=100, bank="ACB").debit_account == "635"
+    assert not _process("THANH TOAN USD", debit=100).debit_account.startswith("1122")
+    vcb_fee = _process("PHI NGAN HANG", debit=100, bank="VCB")
+    assert vcb_fee.debit_account == "635"
+    assert vcb_fee.object_code == "VCB"
+    acb_fee = _process("THU PHI PHAT HANH BAO LANH THUC HIEN HOP DONG", debit=100, bank="ACB")
+    assert acb_fee.debit_account == "635"
+    assert acb_fee.object_code == "ACB"
+    msb_fee = _process("PHI CHUYEN TIEN", debit=100, bank="MSB")
+    assert msb_fee.debit_account == "635"
+    assert msb_fee.object_code == "MSBHB"
     assert _process("NOP THUE GTGT THANG 4", debit=100).debit_account == "3331"
+
+
+def test_tax_and_bank_loan_interest_default_objects():
+    assert _process("NOP THUE GTGT THANG 4", debit=100, bank="ACB").object_code == "CUCTHUE"
+    assert _process("NOP THUE TNDN TAM NOP", debit=100, bank="VCB").object_code == "CUCTHUE"
+    assert _process("NOP THUE TNCN", debit=100, bank="MSB").object_code == "CUCTHUE"
+    xnk = _process("NOP THUE HAI QUAN THUE XNK", debit=100, bank="VCB")
+    assert xnk.debit_account == "3333"
+    assert xnk.object_code == "CUCTHUE"
+
+    vcb_interest = _process("TRA LAI VAY", debit=100, bank="VCB")
+    assert vcb_interest.status == "OK"
+    assert vcb_interest.debit_account == "635"
+    assert vcb_interest.object_code == "VCB"
+    assert vcb_interest.reason == "Lãi vay ngân hàng"
+
+    acb_interest = _process("TRA LAI VAY", debit=100, bank="ACB")
+    assert acb_interest.status == "ERROR"
+    assert acb_interest.object_code != "ACB"
 
 
 def test_acb_exception_patterns_pass_with_approved_overrides():
@@ -244,7 +279,7 @@ def test_bill_issue_fee_receipts_use_customer_001_and_company_reason():
         assert result.credit_account == "131"
         assert result.object_code == "001"
         assert result.object_name == company_name
-        assert result.reason == f"Thanh toán phí phát lệnh ({company_name})"
+        assert result.reason == "Thu phí cấp lệnh khách lẻ"
 
 
 def test_bill_issue_fee_receipt_requires_amount_guard():
@@ -459,6 +494,9 @@ def test_integration_process_real_samples_and_write_outputs(tmp_path):
     for sheet_name in ["BAO_NO_INPUT", "BAO_CO_INPUT", "THU_TIEN_MAT_INPUT", "CHI_TIEN_MAT_INPUT"]:
         assert sheet_name in wb.sheetnames
         expected_columns = RPA_THU_TIEN_MAT_COLUMNS if sheet_name == "THU_TIEN_MAT_INPUT" else RPA_BUSINESS_COLUMNS
+        if config.get("output", {}).get("rpa_reason_encoding") == "tcvn3":
+            expected_columns = list(expected_columns)
+            expected_columns.insert(expected_columns.index("Lí do") + 1, RPA_REASON_UNICODE_COLUMN)
         assert [cell.value for cell in wb[sheet_name][1]] == expected_columns
     assert "SUMMARY" in wb.sheetnames
     assert "RPA_TASKS" in wb.sheetnames

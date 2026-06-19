@@ -306,3 +306,26 @@ def _json_default(value: Any) -> str:
 
 def _now() -> str:
     return datetime.now().isoformat(timespec="seconds")
+
+
+def reset_all_records(records: Iterable[dict[str, Any]], message: str = "") -> list[dict[str, Any]]:
+    now = _now()
+    updated: list[dict[str, Any]] = []
+    for record in records:
+        item = normalize_tracking_record(record)
+        item["rpa_status"] = STATUS_PENDING
+        item["status"] = STATUS_PENDING
+        item["rpa_message"] = message
+        item["completed_at"] = ""
+        item["voucher_no"] = ""
+        item["rpa_started_at"] = ""
+        item["rpa_finished_at"] = ""
+        item["last_attempt_result"] = ""
+        item["updated_at"] = now
+        updated.append(item)
+    return updated
+
+
+def reset_all_tracking(path: str | Path, message: str = "", logger: logging.Logger | None = None) -> None:
+    records = load_tracking(path, logger=logger)
+    write_tracking_records(reset_all_records(records.values(), message=message), path)

@@ -16,8 +16,10 @@ from src.rpa_summary import (
     finalize_rpa_run,
     mark_rpa_done,
     mark_rpa_started,
+    reset_all_rpa_status,
     write_summary,
 )
+from src.rpa_tracking import reset_all_records
 
 
 def _processed(uid: str, row_index: int, amount: int = 1000) -> ProcessedTransaction:
@@ -286,3 +288,72 @@ def test_abort_run_resets_only_rows_touched_in_that_run(tmp_path):
     assert statuses["uid_untouched"] == STATUS_PENDING
     assert statuses["uid_done_old"] == STATUS_DONE
     assert vouchers["uid_done_old"] == "OLD"
+
+
+def test_reset_all_records_sets_everything_pending_and_clears_attempt_fields():
+    records = [
+        {
+            "transaction_uid": "uid_done",
+            "rpa_status": STATUS_DONE,
+            "status": STATUS_DONE,
+            "completed_at": "2026-04-01T08:01:00",
+            "voucher_no": "BN001",
+            "rpa_started_at": "2026-04-01T08:00:00",
+            "rpa_finished_at": "2026-04-01T08:01:00",
+            "last_attempt_result": "success",
+        },
+        {
+            "transaction_uid": "uid_pending",
+            "rpa_status": STATUS_PENDING,
+            "status": STATUS_PENDING,
+            "last_attempt_result": "error",
+        },
+    ]
+
+    reset = reset_all_records(records, message="Reset all")
+
+    assert [record["transaction_uid"] for record in reset] == ["uid_done", "uid_pending"]
+    for record in reset:
+        assert record["rpa_status"] == STATUS_PENDING
+        assert record["status"] == STATUS_PENDING
+        assert record["rpa_message"] == "Reset all"
+        assert record["completed_at"] == ""
+        assert record["voucher_no"] == ""
+        assert record["rpa_started_at"] == ""
+        assert record["rpa_finished_at"] == ""
+        assert record["last_attempt_result"] == ""
+        assert record["updated_at"]
+
+
+def test_reset_all_rpa_status_updates_summary_file(tmp_path):
+    summary_path = tmp_path / "rpa_summary.xlsx"
+    rows = []
+    for uid, status in (("uid_done", STATUS_DONE), ("uid_pending", STATUS_PENDING)):
+        row = {column: "" for column in SUMMARY_COLUMNS}
+        row.update(
+            {
+                "transaction_uid": uid,
+                "source_file": "sample.xlsx",
+                "source_sheet": "Statement",
+                "source_row_index": 5,
+                "status": status,
+                "rpa_status": status,
+                "voucher_no": "BN001" if status == STATUS_DONE else "",
+                "completed_at": "2026-04-01T08:01:00" if status == STATUS_DONE else "",
+                "last_attempt_result": "success" if status == STATUS_DONE else "error",
+            }
+        )
+        rows.append(row)
+    write_summary(pd.DataFrame(rows, columns=SUMMARY_COLUMNS), summary_path)
+
+    reset_all_rpa_status(summary_path, message="Reset all")
+
+    df = pd.read_excel(summary_path, sheet_name=SUMMARY_SHEET_NAME, dtype=object)
+    df = df.where(pd.notna(df), "")
+    assert set(df["transaction_uid"]) == {"uid_done", "uid_pending"}
+    assert set(df["rpa_status"]) == {STATUS_PENDING}
+    assert set(df["status"]) == {STATUS_PENDING}
+    assert set(df["rpa_message"]) == {"Reset all"}
+    assert set(df["completed_at"]) == {""}
+    assert set(df["voucher_no"]) == {""}
+    assert set(df["last_attempt_result"]) == {""}

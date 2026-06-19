@@ -51,3 +51,13 @@ def test_bank_interest_credit():
     match = engine().match("bao_co", "MSB", "LAI NHAP VON")
     assert match is not None
     assert match.rule.account == "515"
+
+
+def test_bank_loan_interest_is_vcb_only():
+    rule_engine = engine()
+    vcb = rule_engine.match("bao_no", "VCB", "TRA LAI VAY")
+    acb = rule_engine.match("bao_no", "ACB", "TRA LAI VAY")
+    assert vcb is not None
+    assert vcb.rule.rule_id == "bank_loan_interest"
+    assert vcb.rule.default_object_code == "VCB"
+    assert acb is None

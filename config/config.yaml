@@ -3,6 +3,16 @@
   ACB: "1121CT"
   MSB: "1121HB"
 
+bank_object_codes:
+  VCB: "VCB"
+  ACB: "ACB"
+  MSB: "MSBHB"
+
+foreign_currency_accounts:
+  VCB: "1122VCB"
+  ACB: "1122CT"
+  MSB: "1122HB"
+
 matching:
   min_score: 80
   min_gap: 8
@@ -14,6 +24,7 @@ output:
   summary_file: "rpa_summary.xlsx"
   object_match_review_file: "object_match_review.xlsx"
   log_file: "agent_run.log"
+  rpa_reason_encoding: "tcvn3"
 
 rules:
   default_rules_file: "config/default_rules.yaml"
@@ -21,6 +32,7 @@ rules:
 own_company_file: "config/own_company.yaml"
 object_aliases_file: "config/object_aliases.yaml"
 object_overrides_file: "config/object_overrides.yaml"
+reason_aliases_file: "config/reason_aliases.yaml"
 internal_objects_file: "input/MA NOI BO CTY.xlsx"
 
 ml:

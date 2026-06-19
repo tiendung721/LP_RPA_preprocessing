@@ -30,6 +30,7 @@ from .object_overrides import load_object_overrides
 from .parsers.acb_parser import ACBParser
 from .parsers.msb_parser import MSBParser
 from .parsers.vcb_parser import VCBParser
+from .reason_aliases import ReasonPurpose, load_reason_purposes
 from .reason_generator import clean_reason_value, generate_reason, has_usable_object_code, reason_requires_object_code
 from .rule_engine import RuleEngine
 from .ml.transaction_classifier import TransactionClassifier
@@ -68,8 +69,10 @@ def process_all(
 
     own_company_path = _resolve_config_path(config.get("own_company_file", "config/own_company.yaml"), project_root)
     aliases_path = _resolve_config_path(config.get("object_aliases_file", "config/object_aliases.yaml"), project_root)
+    reason_aliases_path = _resolve_config_path(config.get("reason_aliases_file", "config/reason_aliases.yaml"), project_root)
     own_company = OwnCompanyConfig.from_yaml(own_company_path)
     object_aliases = load_object_aliases(aliases_path)
+    config["_reason_purposes"] = load_reason_purposes(reason_aliases_path)
     overrides_path = _resolve_config_path(config.get("object_overrides_file", "config/object_overrides.yaml"), project_root)
     object_overrides = load_object_overrides(overrides_path)
     entity_extractor = EntityExtractor(own_company)
@@ -273,12 +276,20 @@ def process_transaction(
         matched_rule = "ML"
 
     if active_rule:
-        debit_account, credit_account = _accounts_for_flow(flow, active_rule, bank_account)
+        debit_account, credit_account = _accounts_for_flow(flow, active_rule, bank_account, transaction.bank, config)
 
         if not active_rule.auto_process:
             errors.append(active_rule.error_note or "Rule không xử lý tự động")
 
-        if active_rule.requires_object:
+        default_object_code = _default_object_code_for_rule(active_rule, transaction.bank, config)
+        if active_rule.account_from_foreign_currency_bank and not _effective_rule_account(active_rule, transaction.bank, config):
+            errors.append(f"Không tìm thấy tài khoản ngoại tệ cấu hình cho ngân hàng {transaction.bank}")
+        if active_rule.default_object_from_bank and not default_object_code:
+            errors.append(f"Không tìm thấy mã đối tượng ngân hàng cấu hình cho {transaction.bank}")
+
+        if default_object_code:
+            object_code = default_object_code
+        elif active_rule.requires_object:
             match_result = _match_rule_object(
                 active_rule,
                 payable_matcher,
@@ -300,7 +311,7 @@ def process_transaction(
                     active_rule = fallback_rule
                     matched_rule = fallback_rule.rule_id or fallback_rule.use_case
                     use_case = fallback_rule.use_case
-                    debit_account, credit_account = _accounts_for_flow(flow, active_rule, bank_account)
+                    debit_account, credit_account = _accounts_for_flow(flow, active_rule, bank_account, transaction.bank, config)
                     match_result = fallback_result
             if match_result.status == "OK":
                 object_code = match_result.code
@@ -333,7 +344,16 @@ def process_transaction(
             debit_account = bank_account
             credit_account = ml_result.account
 
-    reason = _reason_for_transaction(active_rule, flow, debit_account, credit_account, object_code, object_name)
+    reason = _reason_for_transaction(
+        active_rule,
+        flow,
+        debit_account,
+        credit_account,
+        object_code,
+        object_name,
+        transaction.description,
+        _reason_purposes_for_config(config),
+    )
     if _is_foreign_exchange_account(flow, debit_account, credit_account):
         reason = format_foreign_exchange_reason(reason, foreign_exchange)
     if (
@@ -401,6 +421,8 @@ def _reason_for_transaction(
     credit_account: str,
     object_code: str,
     object_name: str = "",
+    description: str = "",
+    purposes: list[ReasonPurpose] | tuple[ReasonPurpose, ...] | None = None,
 ) -> str:
     if rule and rule.reason_template:
         cleaned_object_code = clean_reason_value(object_code)
@@ -415,7 +437,15 @@ def _reason_for_transaction(
             object_code=cleaned_object_code,
             object_name=cleaned_object_name,
         )
-    return generate_reason(flow, debit_account, credit_account, object_code)
+    return generate_reason(
+        flow,
+        debit_account,
+        credit_account,
+        object_code,
+        object_name=object_name,
+        description=description,
+        purposes=purposes,
+    )
 
 
 def _rule_has_object_free_reason(rule: Rule | None) -> bool:
@@ -424,10 +454,14 @@ def _rule_has_object_free_reason(rule: Rule | None) -> bool:
 
 def _is_foreign_exchange_account(flow: str, debit_account: str, credit_account: str) -> bool:
     if flow == FLOW_BAO_NO:
-        return str(debit_account or "").strip() == "1122"
+        return _is_foreign_currency_account(debit_account)
     if flow == FLOW_BAO_CO:
-        return str(credit_account or "").strip() == "1122"
+        return _is_foreign_currency_account(credit_account)
     return False
+
+
+def _is_foreign_currency_account(account: str) -> bool:
+    return str(account or "").strip().upper().startswith("1122")
 
 
 def _detect_money_direction(transaction: Transaction) -> tuple[str, str, float, list[str]]:
@@ -467,16 +501,37 @@ def _candidate_flows_for_direction(direction: str) -> list[str]:
     return []
 
 
-def _accounts_for_flow(flow: str, rule: Rule, bank_account: str) -> tuple[str, str]:
+def _accounts_for_flow(
+    flow: str,
+    rule: Rule,
+    bank_account: str,
+    bank: str = "",
+    config: dict[str, Any] | None = None,
+) -> tuple[str, str]:
+    rule_account = _effective_rule_account(rule, bank, config or {})
     if flow == FLOW_BAO_NO:
-        return rule.account, bank_account
+        return rule_account, bank_account
     if flow == FLOW_BAO_CO:
-        return bank_account, rule.account
+        return bank_account, rule_account
     if flow == FLOW_THU_TIEN_MAT:
         return CASH_ACCOUNT, bank_account
     if flow == FLOW_CHI_TIEN_MAT:
         return bank_account, CASH_ACCOUNT
     return "", ""
+
+
+def _effective_rule_account(rule: Rule, bank: str, config: dict[str, Any]) -> str:
+    if not rule.account_from_foreign_currency_bank:
+        return rule.account
+    return str((config.get("foreign_currency_accounts") or {}).get(bank, "") or "").strip()
+
+
+def _default_object_code_for_rule(rule: Rule, bank: str, config: dict[str, Any]) -> str:
+    if rule.default_object_code:
+        return rule.default_object_code
+    if rule.default_object_from_bank:
+        return str((config.get("bank_object_codes") or {}).get(bank, "") or "").strip()
+    return ""
 
 
 def _mark_duplicate_transactions(items: list[ProcessedTransaction]) -> int:
@@ -612,6 +667,17 @@ def _merge_aliases(*sections: dict[str, list[str]] | None) -> dict[str, list[str
         for code, aliases in (section or {}).items():
             merged.setdefault(code, []).extend(aliases or [])
     return {code: list(dict.fromkeys(values)) for code, values in merged.items()}
+
+
+def _reason_purposes_for_config(config: dict[str, Any]) -> list[ReasonPurpose]:
+    if "_reason_purposes" in config:
+        return list(config.get("_reason_purposes") or [])
+
+    project_root = Path(__file__).resolve().parents[1]
+    reason_aliases_path = _resolve_config_path(config.get("reason_aliases_file", "config/reason_aliases.yaml"), project_root)
+    purposes = load_reason_purposes(reason_aliases_path)
+    config["_reason_purposes"] = purposes
+    return purposes
 
 
 def _has_required_rpa_fields(

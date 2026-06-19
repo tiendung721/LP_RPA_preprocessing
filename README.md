@@ -31,6 +31,7 @@ File chạy tạm cho RPA: `output/rpa_input.xlsx`
 - `EXCEPTION`: dòng lỗi, chưa chắc chắn, thiếu mã đối tượng, bảo hiểm, hoặc bị verifier chặn.
 - `SUMMARY`: thống kê số dòng và tổng tiền.
 - `RPA_TASKS`: mapping giữa dòng input và dòng trạng thái bền vững.
+- Cột `Lí do` trong các sheet input có thể xuất TCVN3 cho VACOM bằng `output.rpa_reason_encoding: "tcvn3"`; khi bật chế độ này, file có thêm cột `Lí do Unicode` ngay bên cạnh để đọc/đối chiếu. Dữ liệu config/audit/tracking vẫn giữ Unicode.
 
 Các sheet input có các cột nghiệp vụ sau. Cột `Tỷ giá` để trống với giao dịch thường và có giá trị với giao dịch ngoại tệ:
 
@@ -70,6 +71,7 @@ File trạng thái bền vững: `output/rpa_summary.xlsx`
 
 - `config/own_company.yaml`: khai báo công ty mình để không bao giờ chọn nhầm mã ĐT như `LE PHAM`.
 - `config/object_aliases.yaml`: alias thực tế trên sao kê, ví dụ `KBB`, `PETROLIMEX`, `VINH LONG`, `VSICO`.
+- `config/reason_aliases.yaml`: alias loại thanh toán để sinh `Lí do` chi tiết, ví dụ `cước vận chuyển`, `phí cảng vụ`, `tiền thuê văn phòng`.
 - `config/default_rules.yaml`: rule nghiệp vụ kế toán.
 - `config/ml.yaml`: đường dẫn model ML offline.
 

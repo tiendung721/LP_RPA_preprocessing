@@ -21,6 +21,7 @@ from .flows import (
 from .models import ProcessedTransaction
 from .rpa_summary import RpaRunState, prepare_rpa_run, write_summary
 from .rpa_tracking import STATUS_PENDING, write_tracking_records
+from .vietnamese_encoding import unicode_to_tcvn3
 
 
 RPA_BUSINESS_COLUMNS = [
@@ -59,6 +60,8 @@ RPA_TRACKING_COLUMNS = [
     "direction",
 ]
 RPA_COLUMNS = RPA_BUSINESS_COLUMNS
+RPA_REASON_ENCODING_TCVN3 = "tcvn3"
+RPA_REASON_UNICODE_COLUMN = "Lí do Unicode"
 RPA_TASK_COLUMNS = [
     "run_id",
     "task_id",
@@ -108,6 +111,7 @@ def write_outputs(
         run_id=run_state.run_id,
         rpa_items=run_state.rpa_items,
         run_stats=config.get("_run_stats", {}),
+        rpa_reason_encoding=output_cfg.get("rpa_reason_encoding", ""),
     )
     write_object_match_review(processed, object_match_review_path, alias_audit_rows=_build_alias_audit_rows(config))
     write_tracking(processed, tracking_path, run_state)
@@ -127,6 +131,7 @@ def write_excel(
     run_id: str | None = None,
     rpa_items: list[ProcessedTransaction] | None = None,
     run_stats: dict[str, Any] | None = None,
+    rpa_reason_encoding: str = "",
 ) -> None:
     path = Path(path)
     input_items = rpa_items if rpa_items is not None else processed
@@ -135,7 +140,10 @@ def write_excel(
         for flow in PAD_FLOW_ORDER
     }
     flow_dfs = {
-        flow: pd.DataFrame([_rpa_record(item, run_id=run_id) for item in items], columns=_rpa_columns_for_flow(flow))
+        flow: pd.DataFrame(
+            [_rpa_record(item, run_id=run_id, reason_encoding=rpa_reason_encoding) for item in items],
+            columns=_rpa_columns_for_flow(flow, rpa_reason_encoding),
+        )
         for flow, items in flow_items.items()
     }
     exception_df = pd.DataFrame([_exception_record(item) for item in processed if item.status != "OK"])
@@ -573,11 +581,15 @@ def _hint_collision_suggested_action(risk_class: str) -> str:
     return actions.get(risk_class, "")
 
 
-def _rpa_record(item: ProcessedTransaction, run_id: str | None = None) -> dict[str, Any]:
-    return {
+def _rpa_record(
+    item: ProcessedTransaction,
+    run_id: str | None = None,
+    reason_encoding: str = "",
+) -> dict[str, Any]:
+    record = {
         "Ngày CT": item.transaction_date,
         "Mã ĐT": item.object_code,
-        "Lí do": item.reason,
+        "Lí do": _rpa_reason(item.reason, reason_encoding),
         "Người nộp tiền": _cash_recipient_name(item),
         "Người nhận tiền": _cash_recipient_name(item),
         "TK nợ": item.debit_account,
@@ -594,6 +606,19 @@ def _rpa_record(item: ProcessedTransaction, run_id: str | None = None) -> dict[s
         "source_row": item.original_row_index,
         "direction": item.bank_direction or item.flow,
     }
+    if _is_tcvn3_reason_encoding(reason_encoding):
+        record[RPA_REASON_UNICODE_COLUMN] = item.reason
+    return record
+
+
+def _rpa_reason(reason: str, encoding: str = "") -> str:
+    if _is_tcvn3_reason_encoding(encoding):
+        return unicode_to_tcvn3(reason)
+    return reason
+
+
+def _is_tcvn3_reason_encoding(encoding: str = "") -> bool:
+    return str(encoding or "").strip().lower() == RPA_REASON_ENCODING_TCVN3
 
 
 def _exception_record(item: ProcessedTransaction) -> dict[str, Any]:
@@ -1016,10 +1041,15 @@ def _cash_recipient_name(item: ProcessedTransaction) -> str:
     return str(getattr(item.entities, "cash_person_name", "") or "").strip()
 
 
-def _rpa_columns_for_flow(flow: str) -> list[str]:
+def _rpa_columns_for_flow(flow: str, reason_encoding: str = "") -> list[str]:
     if flow == FLOW_THU_TIEN_MAT:
-        return RPA_THU_TIEN_MAT_COLUMNS
-    return RPA_BUSINESS_COLUMNS
+        columns = list(RPA_THU_TIEN_MAT_COLUMNS)
+    else:
+        columns = list(RPA_BUSINESS_COLUMNS)
+    if _is_tcvn3_reason_encoding(reason_encoding):
+        reason_index = columns.index("Lí do") + 1
+        columns.insert(reason_index, RPA_REASON_UNICODE_COLUMN)
+    return columns
 
 
 def _serialize_date(value: date | None) -> str:
