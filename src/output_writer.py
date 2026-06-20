@@ -19,11 +19,21 @@ from .flows import (
     flow_voucher_type,
 )
 from .models import ProcessedTransaction
+from .rpa_input_status import (
+    INPUT_MESSAGE_COLUMN,
+    INPUT_STATUS_COLUMN,
+    INPUT_UPDATED_AT_COLUMN,
+)
 from .rpa_summary import RpaRunState, prepare_rpa_run, write_summary
 from .rpa_tracking import STATUS_PENDING, write_tracking_records
 from .vietnamese_encoding import unicode_to_tcvn3
 
 
+RPA_INPUT_STATUS_COLUMNS = [
+    INPUT_STATUS_COLUMN,
+    INPUT_MESSAGE_COLUMN,
+    INPUT_UPDATED_AT_COLUMN,
+]
 RPA_BUSINESS_COLUMNS = [
     "Ngày CT",
     "Mã ĐT",
@@ -36,7 +46,7 @@ RPA_BUSINESS_COLUMNS = [
     "Ngân hàng",
     "transaction_uid",
     "run_id",
-]
+] + RPA_INPUT_STATUS_COLUMNS
 RPA_THU_TIEN_MAT_COLUMNS = [
     "Ngày CT",
     "Mã ĐT",
@@ -49,7 +59,7 @@ RPA_THU_TIEN_MAT_COLUMNS = [
     "Ngân hàng",
     "transaction_uid",
     "run_id",
-]
+] + RPA_INPUT_STATUS_COLUMNS
 RPA_TRACKING_COLUMNS = [
     "transaction_uid",
     "rpa_status",
@@ -599,6 +609,9 @@ def _rpa_record(
         "run_id": run_id or "",
         "rpa_status": item.rpa_status or STATUS_PENDING,
         "rpa_message": item.rpa_message,
+        INPUT_STATUS_COLUMN: item.rpa_status or STATUS_PENDING,
+        INPUT_MESSAGE_COLUMN: item.rpa_message or "",
+        INPUT_UPDATED_AT_COLUMN: "",
         "source_file": item.source_file,
         "source_sheet": item.source_sheet,
         "source_row": item.original_row_index,
