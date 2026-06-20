@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import json
+import sys
 from datetime import date
 
 import pandas as pd
 from openpyxl import load_workbook
 
+import update_rpa_status as update_cli
 from src.models import ProcessedTransaction
 from src.output_writer import RPA_BUSINESS_COLUMNS, write_outputs
 from src.rpa_summary import (
@@ -91,6 +94,7 @@ def test_write_outputs_filters_completed_summary_rows(tmp_path):
     }
     write_outputs([_processed("uid_done", 2), _processed("uid_new", 3)], tmp_path, config)
 
+    assert not (tmp_path / "rpa_tracking.json").exists()
     wb = load_workbook(tmp_path / "rpa_input.xlsx", data_only=True)
     assert wb["BAO_NO_INPUT"].max_row == 2
     headers = [cell.value for cell in wb["BAO_NO_INPUT"][1]]
@@ -106,6 +110,33 @@ def test_write_outputs_filters_completed_summary_rows(tmp_path):
     statuses = dict(zip(summary_df["transaction_uid"], summary_df["status"]))
     assert statuses["uid_done"] == STATUS_DONE
     assert statuses["uid_new"] == STATUS_PENDING
+
+
+def test_write_outputs_uses_summary_over_legacy_tracking_json(tmp_path):
+    tracking_path = tmp_path / "rpa_tracking.json"
+    tracking_record = {
+        "transaction_uid": "uid_excel_wins",
+        "rpa_status": STATUS_DONE,
+        "status": STATUS_DONE,
+        "completed_at": "2026-04-01T08:01:00",
+    }
+    tracking_path.write_text(json.dumps([tracking_record], ensure_ascii=False), encoding="utf-8")
+
+    config = {
+        "output": {
+            "excel_file": "rpa_input.xlsx",
+            "tracking_file": "rpa_tracking.json",
+            "summary_file": "rpa_summary.xlsx",
+        }
+    }
+    result = write_outputs([_processed("uid_excel_wins", 2)], tmp_path, config)
+
+    wb = load_workbook(result.excel_path, data_only=True)
+    assert wb["BAO_NO_INPUT"].max_row == 2
+    summary_df = pd.read_excel(result.summary_path, sheet_name=SUMMARY_SHEET_NAME, dtype=object)
+    row = summary_df[summary_df["transaction_uid"] == "uid_excel_wins"].iloc[0]
+    assert row["rpa_status"] == STATUS_PENDING
+    assert json.loads(tracking_path.read_text(encoding="utf-8")) == [tracking_record]
 
 
 def test_write_outputs_reexports_legacy_non_done_rows_as_pending(tmp_path):
@@ -249,6 +280,22 @@ def test_rpa_status_helpers_mark_done_immediately_completed(tmp_path):
     assert finalized_row["last_attempt_result"] == ""
 
 
+def test_summary_workbook_has_user_status_controls(tmp_path):
+    summary_path = tmp_path / "rpa_summary.xlsx"
+    row = {column: "" for column in SUMMARY_COLUMNS}
+    row.update({"transaction_uid": "uid_pending", "status": STATUS_PENDING, "rpa_status": STATUS_PENDING})
+    write_summary(pd.DataFrame([row], columns=SUMMARY_COLUMNS), summary_path)
+
+    wb = load_workbook(summary_path)
+    ws = wb[SUMMARY_SHEET_NAME]
+    headers = [cell.value for cell in ws[1]]
+    assert headers[:5] == ["transaction_uid", "rpa_status", "source_file", "voucher_no", "rpa_message"]
+    assert "STATUS_GUIDE" in wb.sheetnames
+    assert ws.freeze_panes == "A2"
+    validations = list(ws.data_validations.dataValidation)
+    assert any(validation.type == "list" and "chua_nhap,hoan_thanh" in validation.formula1 for validation in validations)
+
+
 def test_abort_run_resets_only_rows_touched_in_that_run(tmp_path):
     summary_path = tmp_path / "rpa_summary.xlsx"
     rows = []
@@ -357,3 +404,34 @@ def test_reset_all_rpa_status_updates_summary_file(tmp_path):
     assert set(df["completed_at"]) == {""}
     assert set(df["voucher_no"]) == {""}
     assert set(df["last_attempt_result"]) == {""}
+
+
+def test_update_status_cli_updates_summary_only(tmp_path, monkeypatch):
+    summary_path = tmp_path / "rpa_summary.xlsx"
+    row = {column: "" for column in SUMMARY_COLUMNS}
+    row.update({"transaction_uid": "uid_pending", "status": STATUS_PENDING, "rpa_status": STATUS_PENDING})
+    write_summary(pd.DataFrame([row], columns=SUMMARY_COLUMNS), summary_path)
+
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "update_rpa_status.py",
+            "--output-dir",
+            str(tmp_path),
+            "--uid",
+            "uid_pending",
+            "--status",
+            STATUS_DONE,
+            "--voucher-no",
+            "BN002",
+        ],
+    )
+
+    assert update_cli.main() == 0
+    assert not (tmp_path / "rpa_tracking.json").exists()
+    df = pd.read_excel(summary_path, sheet_name=SUMMARY_SHEET_NAME, dtype=object)
+    df = df.where(pd.notna(df), "")
+    updated = df[df["transaction_uid"] == "uid_pending"].iloc[0]
+    assert updated["rpa_status"] == STATUS_DONE
+    assert updated["voucher_no"] == "BN002"

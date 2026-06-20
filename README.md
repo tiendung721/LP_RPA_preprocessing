@@ -31,7 +31,7 @@ File chạy tạm cho RPA: `output/rpa_input.xlsx`
 - `EXCEPTION`: dòng lỗi, chưa chắc chắn, thiếu mã đối tượng, bảo hiểm, hoặc bị verifier chặn.
 - `SUMMARY`: thống kê số dòng và tổng tiền.
 - `RPA_TASKS`: mapping giữa dòng input và dòng trạng thái bền vững.
-- Cột `Lí do` trong các sheet input có thể xuất TCVN3 cho VACOM bằng `output.rpa_reason_encoding: "tcvn3"`; khi bật chế độ này, file có thêm cột `Lí do Unicode` ngay bên cạnh để đọc/đối chiếu. Dữ liệu config/audit/tracking vẫn giữ Unicode.
+- Cột `Lí do` trong các sheet input có thể xuất TCVN3 cho VACOM bằng `output.rpa_reason_encoding: "tcvn3"`; khi bật chế độ này, file có thêm cột `Lí do Unicode` ngay bên cạnh để đọc/đối chiếu. Dữ liệu config/audit/summary vẫn giữ Unicode.
 
 Các sheet input có các cột nghiệp vụ sau. Cột `Tỷ giá` để trống với giao dịch thường và có giá trị với giao dịch ngoại tệ:
 
@@ -43,14 +43,10 @@ THU_TIEN_MAT:
 Ngày CT | Mã ĐT | Lí do | Người nộp tiền | TK nợ | TK có | Thành tiền | Tỷ giá | Ngân hàng
 ```
 
-File tracking: `output/rpa_tracking.json`
+File legacy tracking: `output/rpa_tracking.json`
 
-Tracking có thêm:
-
-- `entities`: đối tượng gợi ý, nội dung đã làm sạch, hóa đơn, MST, intent.
-- `object_match_source`: `alias_match`, `catalog_phrase`, `entity_match`, `fuzzy_name`, `tax_code`.
-- `ml_result`: kết quả ML nếu có model.
-- `verification_result`: kiểm tra cuối trước khi xuất RPA.
+- File JSON này không còn được tạo/cập nhật trong luồng vận hành thường ngày.
+- Nếu còn tồn tại từ bản cũ thì chỉ xem như dữ liệu lịch sử/debug; trạng thái RPA hiện lấy từ `output/rpa_summary.xlsx`.
 
 File review mã đối tượng: `output/object_match_review.xlsx`
 
@@ -60,12 +56,15 @@ File review mã đối tượng: `output/object_match_review.xlsx`
 File trạng thái bền vững: `output/rpa_summary.xlsx`
 
 - Sheet `RPA_SUMMARY` lưu từng giao dịch theo `transaction_uid`, file/sheet/dòng gốc và trạng thái RPA.
+- Người dùng quản lý trực tiếp 3 cột: `rpa_status`, `voucher_no`, `rpa_message`.
+- Cột `rpa_status` có dropdown, chỉ dùng `chua_nhap` hoặc `hoan_thanh`.
 - Trạng thái `hoàn thành` sẽ không được đưa lại vào `rpa_input.xlsx` ở các lần chạy sau.
 - Chỉ có 2 trạng thái bền vững: `chưa nhập` và `hoàn thành`.
 - Các trạng thái cũ như `lỗi`, `đang nhập`, `cần kiểm tra`, `bỏ qua` sẽ được chuẩn hóa về `chưa nhập`.
 - Khi PAD gọi cập nhật `hoàn thành` cho một dòng, dòng đó được ghi trạng thái `hoàn thành` ngay và sẽ không được đưa lại vào `rpa_input.xlsx` ở lần chạy sau.
 - `finalize-run` vẫn có thể gọi ở cuối flow để tương thích và xử lý dữ liệu cũ, nhưng không còn là điều kiện bắt buộc để khóa dòng đã nhập.
 - Nếu PAD abort giữa chừng, abort run chỉ reset các dòng lỗi/tạm trong run đó; các dòng đã `hoàn thành` không bị đụng.
+- Trước khi agent/PAD cập nhật trạng thái, hãy đóng `rpa_summary.xlsx`; nếu file đang mở, script sẽ báo cần đóng Excel rồi chạy lại.
 
 ## 3. Config Quan Trọng
 
@@ -92,6 +91,18 @@ Kế toán có thể điền các cột:
 - `correct_object_code`
 - `correct_object_name`
 - `review_status`
+
+Build dữ liệu training từ summary Excel:
+
+```powershell
+python -m src.ml.build_training_data --summary output\rpa_summary.xlsx
+```
+
+Nếu cần khai thác file JSON cũ:
+
+```powershell
+python -m src.ml.build_training_data --tracking output\rpa_tracking.json
+```
 
 Train model phân loại giao dịch:
 

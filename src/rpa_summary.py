@@ -6,7 +6,9 @@ from pathlib import Path
 from typing import Any
 
 import pandas as pd
-from openpyxl.styles import Font
+from openpyxl.formatting.rule import CellIsRule
+from openpyxl.worksheet.datavalidation import DataValidation
+from openpyxl.styles import Font, PatternFill
 from openpyxl.utils import get_column_letter
 
 from .flows import FLOW_BAO_CO, FLOW_BAO_NO, FLOW_CHI_TIEN_MAT, FLOW_THU_TIEN_MAT
@@ -19,9 +21,7 @@ from .rpa_tracking import (
     abort_run_records,
     apply_status_update,
     finalize_run_records,
-    load_tracking,
     normalize_status,
-    normalize_tracking_record,
     reset_all_records,
     validate_status,
 )
@@ -32,36 +32,48 @@ SUMMARY_SHEET_NAME = "RPA_SUMMARY"
 
 SUMMARY_COLUMNS = [
     "transaction_uid",
-    "bank_code",
-    "source_file",
-    "source_sheet",
-    "source_row",
-    "direction",
     "rpa_status",
+    "source_file",
+    "voucher_no",
     "rpa_message",
-    "created_at",
-    "updated_at",
-    "completed_at",
     "transaction_date",
-    "doc_no",
-    "original_content",
-    "counterparty_raw",
+    "bank",
+    "flow",
     "amount",
     "object_code",
-    "object_name",
     "debit_account",
     "credit_account",
     "reason",
+    "original_content",
+    "source_sheet",
+    "source_row",
+    "doc_no",
+    "counterparty_raw",
+    "object_name",
+    "use_case",
+    "processing_status",
+    "confidence",
+    "object_match_source",
+    "bank_code",
+    "direction",
+    "created_at",
+    "updated_at",
+    "completed_at",
     "last_run_id",
     "rpa_started_at",
     "rpa_finished_at",
-    "voucher_no",
     "last_attempt_result",
     # Backward-compatible aliases used by older output and tests.
     "status",
-    "bank",
-    "flow",
     "source_row_index",
+]
+
+STATUS_GUIDE_ROWS = [
+    {"field": "rpa_status", "editable": "YES", "note": "Chỉ dùng chua_nhap hoặc hoan_thanh."},
+    {"field": "voucher_no", "editable": "YES", "note": "Số chứng từ VACOM nếu đã nhập xong."},
+    {"field": "rpa_message", "editable": "YES", "note": "Ghi chú lỗi hoặc lý do cần nhập lại."},
+    {"field": "transaction_uid", "editable": "NO", "note": "Mã định danh dòng, không sửa."},
+    {"field": "Các cột còn lại", "editable": "NO", "note": "Dùng để đối chiếu sao kê và chứng từ."},
 ]
 
 
@@ -94,12 +106,6 @@ def prepare_rpa_run(
         for row in existing_df.to_dict("records")
         if str(row.get("transaction_uid", "")).strip()
     }
-
-    if tracking_path:
-        tracking_by_uid = load_tracking(tracking_path, logger=logger)
-        for uid, tracking_record in tracking_by_uid.items():
-            previous = existing_by_uid.get(uid, {})
-            existing_by_uid[uid] = _merge_existing_records(previous, tracking_record)
 
     now = _now()
     records_by_uid: dict[str, dict[str, Any]] = {}
@@ -186,7 +192,10 @@ def write_summary(summary_df: pd.DataFrame, path: str | Path) -> None:
         df.to_excel(writer, sheet_name=SUMMARY_SHEET_NAME, index=False)
         status_df = _status_counts(df)
         status_df.to_excel(writer, sheet_name="STATUS_COUNTS", index=False)
-        for sheet_name in (SUMMARY_SHEET_NAME, "STATUS_COUNTS"):
+        guide_df = pd.DataFrame(STATUS_GUIDE_ROWS)
+        guide_df.to_excel(writer, sheet_name="STATUS_GUIDE", index=False)
+        _apply_summary_status_controls(writer.book[SUMMARY_SHEET_NAME])
+        for sheet_name in (SUMMARY_SHEET_NAME, "STATUS_COUNTS", "STATUS_GUIDE"):
             _format_sheet(writer.book[sheet_name])
 
 
@@ -259,31 +268,6 @@ def reset_all_rpa_status(summary_path: str | Path, message: str = "") -> pd.Data
     return result
 
 
-def _merge_existing_records(previous: dict[str, Any], tracking_record: dict[str, Any]) -> dict[str, Any]:
-    previous = _ensure_summary_record(previous) if previous else {}
-    tracking_status = normalize_status(tracking_record.get("rpa_status") or tracking_record.get("status"), default="")
-    tracking_record = normalize_tracking_record(tracking_record) if tracking_status else dict(tracking_record)
-    merged = dict(previous)
-    rpa_fields = {
-        "rpa_status",
-        "status",
-        "rpa_message",
-        "updated_at",
-        "completed_at",
-        "rpa_started_at",
-        "rpa_finished_at",
-        "voucher_no",
-        "last_attempt_result",
-    }
-    for field, value in tracking_record.items():
-        if _is_blank_value(value):
-            continue
-        if field in rpa_fields and not tracking_status:
-            continue
-        merged[field] = value
-    return _ensure_summary_record(merged)
-
-
 def _merge_record(
     previous: dict[str, Any] | None,
     item: ProcessedTransaction,
@@ -343,6 +327,10 @@ def _record_from_item(item: ProcessedTransaction, run_id: str, now: str) -> dict
         "debit_account": item.debit_account,
         "credit_account": item.credit_account,
         "reason": item.reason,
+        "use_case": item.use_case,
+        "processing_status": item.status,
+        "confidence": item.confidence,
+        "object_match_source": item.object_match_source,
         "last_run_id": run_id,
         "rpa_started_at": "",
         "rpa_finished_at": "",
@@ -406,10 +394,6 @@ def _clean_cell(value: Any) -> Any:
     return value
 
 
-def _is_blank_value(value: Any) -> bool:
-    return value is None or (isinstance(value, str) and value == "")
-
-
 def _status_counts(df: pd.DataFrame) -> pd.DataFrame:
     if df.empty:
         return pd.DataFrame(columns=["rpa_status", "count"])
@@ -425,6 +409,9 @@ def _now() -> str:
 def _format_sheet(ws) -> None:
     for cell in ws[1]:
         cell.font = Font(bold=True)
+    ws.freeze_panes = "A2"
+    if ws.max_row and ws.max_column:
+        ws.auto_filter.ref = ws.dimensions
     header_names = {cell.value: idx for idx, cell in enumerate(ws[1], start=1)}
     for name, idx in header_names.items():
         if name and ("date" in str(name).lower() or str(name) in {"created_at", "updated_at", "completed_at"}):
@@ -442,3 +429,24 @@ def _format_sheet(ws) -> None:
                 continue
             max_len = max(max_len, len(str(cell.value)))
         ws.column_dimensions[letter].width = min(max(max_len + 2, 10), 60)
+
+
+def _apply_summary_status_controls(ws) -> None:
+    header_names = {cell.value: idx for idx, cell in enumerate(ws[1], start=1)}
+    status_idx = header_names.get("rpa_status")
+    if not status_idx:
+        return
+    letter = get_column_letter(status_idx)
+    validation = DataValidation(type="list", formula1='"chua_nhap,hoan_thanh"', allow_blank=False)
+    validation.error = "Chỉ chọn chua_nhap hoặc hoan_thanh"
+    validation.errorTitle = "Trạng thái không hợp lệ"
+    validation.prompt = "Chọn chua_nhap hoặc hoan_thanh"
+    validation.promptTitle = "rpa_status"
+    ws.add_data_validation(validation)
+    validation.add(f"{letter}2:{letter}1048576")
+
+    pending_fill = PatternFill(start_color="FFF2CC", end_color="FFF2CC", fill_type="solid")
+    done_fill = PatternFill(start_color="D9EAD3", end_color="D9EAD3", fill_type="solid")
+    status_range = f"{letter}2:{letter}{max(ws.max_row, 2)}"
+    ws.conditional_formatting.add(status_range, CellIsRule(operator="equal", formula=['"chua_nhap"'], fill=pending_fill))
+    ws.conditional_formatting.add(status_range, CellIsRule(operator="equal", formula=['"hoan_thanh"'], fill=done_fill))

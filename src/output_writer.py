@@ -84,7 +84,7 @@ RPA_TASK_COLUMNS = [
 class OutputWriteResult:
     run_id: str
     excel_path: Path
-    tracking_path: Path
+    tracking_path: Path | None
     summary_path: Path
     object_match_review_path: Path
     stats: dict[str, int]
@@ -100,10 +100,9 @@ def write_outputs(
     output_dir.mkdir(parents=True, exist_ok=True)
     output_cfg = config.get("output", {})
     excel_path = output_dir / output_cfg.get("excel_file", "rpa_input.xlsx")
-    tracking_path = output_dir / output_cfg.get("tracking_file", "rpa_tracking.json")
     summary_path = output_dir / output_cfg.get("summary_file", "rpa_summary.xlsx")
     object_match_review_path = output_dir / output_cfg.get("object_match_review_file", "object_match_review.xlsx")
-    run_state = prepare_rpa_run(processed, summary_path, tracking_path=tracking_path, logger=logger)
+    run_state = prepare_rpa_run(processed, summary_path, logger=logger)
     write_summary(run_state.summary_df, summary_path)
     write_excel(
         processed,
@@ -114,11 +113,10 @@ def write_outputs(
         rpa_reason_encoding=output_cfg.get("rpa_reason_encoding", ""),
     )
     write_object_match_review(processed, object_match_review_path, alias_audit_rows=_build_alias_audit_rows(config))
-    write_tracking(processed, tracking_path, run_state)
     return OutputWriteResult(
         run_id=run_state.run_id,
         excel_path=excel_path,
-        tracking_path=tracking_path,
+        tracking_path=None,
         summary_path=summary_path,
         object_match_review_path=object_match_review_path,
         stats=run_state.stats,
